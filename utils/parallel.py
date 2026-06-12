@@ -8,14 +8,20 @@ T = TypeVar("T")
 R = TypeVar("R")
 
 
-def map_parallel_ordered(items: list[T], fn: Callable[[T], R]) -> list[R]:
+def map_parallel_ordered(
+    items: list[T],
+    fn: Callable[[T], R],
+    *,
+    max_workers: int | None = None,
+) -> list[R]:
     """Run fn on each item in parallel; return results in the same order as items."""
     if not items:
         return []
     if len(items) == 1:
         return [fn(items[0])]
 
-    workers = min(len(items), max_api_concurrency())
+    cap = max_workers if max_workers is not None else max_api_concurrency()
+    workers = min(len(items), cap)
     results: list[R | None] = [None] * len(items)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(fn, item): index for index, item in enumerate(items)}

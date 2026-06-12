@@ -2,6 +2,7 @@ import json
 import re
 
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
 from services.pdf_styles import (
     ACCENT,
@@ -42,17 +43,74 @@ def extract_formation_blocks(markdown_text: str) -> tuple[str, list[dict]]:
     return stripped, formations
 
 
-def _truncate_name(name: str, max_len: int = 12) -> str:
-    return name if len(name) <= max_len else f"{name[: max_len - 1]}."
+_NAME_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv"})
+_NAME_PARTICLES = frozenset({"van", "von", "de", "da", "del", "la", "le", "dos", "di"})
+
+
+def _badge_label(name: str, max_len: int = 11) -> str:
+    """Short label for pitch badges — prefer surname over full name."""
+    cleaned = name.strip()
+    if not cleaned:
+        return ""
+
+    parts = cleaned.split()
+    if len(parts) == 1:
+        label = parts[0]
+    else:
+        while len(parts) > 1 and parts[-1].lower().rstrip(".") in _NAME_SUFFIXES:
+            parts = parts[:-1]
+        if (
+            len(parts) >= 2
+            and parts[-2].lower().rstrip(".") in _NAME_PARTICLES
+        ):
+            label = f"{parts[-2]} {parts[-1]}"
+        else:
+            label = parts[-1]
+
+    if len(label) <= max_len:
+        return label
+    return f"{label[: max_len - 1]}."
+
+
+def _row_spacing(max_rows: int) -> float:
+    if max_rows >= 5:
+        return 11.0
+    if max_rows >= 4:
+        return 12.0
+    return ROW_SPACING
+
+
+def estimate_formation_block_height(data: dict) -> float:
+    """Approximate vertical space for heading + diagram + injuries line."""
+    _, total_h = _layout_dimensions(data["team_a"], data["team_b"])
+    heading_h = 12.0
+    extra = 6.0
+    unavailable = data.get("unavailable", "")
+    if unavailable:
+        extra += 10.0 + max(0, len(unavailable) // 90) * 5.0
+    return heading_h + total_h + extra
 
 
 def _layout_dimensions(team_a: dict, team_b: dict) -> tuple[float, float]:
     rows_a = len(team_a.get("lines", []))
     rows_b = len(team_b.get("lines", []))
     max_rows = max(rows_a, rows_b, 1)
-    pitch_h = max_rows * ROW_SPACING + PITCH_PAD * 2
+    spacing = _row_spacing(max_rows)
+    pitch_h = max_rows * spacing + PITCH_PAD * 2
     total_h = HEADER_H + pitch_h + FOOTER_PAD + 2
     return pitch_h, total_h
+
+
+def _anchored_cell(
+    pdf: FPDF,
+    w: float,
+    h: float,
+    text: str,
+    *,
+    align: str = "L",
+) -> None:
+    """Draw a cell without moving the PDF cursor (avoids spurious page breaks)."""
+    pdf.cell(w, h, text, align=align, new_x=XPos.LEFT, new_y=YPos.TOP)
 
 
 def _draw_pitch_markings(
@@ -99,7 +157,7 @@ def _draw_player_badge(
     pdf.set_xy(x, y + 1.8)
     pdf.set_font(FONT, "B", BADGE_PT)
     pdf.set_text_color(*INK)
-    pdf.cell(w, h - 3, _truncate_name(name), align="C")
+    _anchored_cell(pdf, w, h - 3, _badge_label(name), align="C")
 
 
 def _draw_team_pitch(
@@ -128,7 +186,7 @@ def _draw_team_pitch(
     pdf.set_xy(x + 3, y + 2.5)
     pdf.set_font(FONT, "B", BODY_PT)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(width * 0.62, 5, name, align="L")
+    _anchored_cell(pdf, width * 0.62, 5, name, align="L")
 
     pill_w = 18
     pill_x = x + width - pill_w - 3
@@ -137,7 +195,7 @@ def _draw_team_pitch(
     pdf.set_xy(pill_x, y + 2.6)
     pdf.set_font(FONT, "B", BODY_PT)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(pill_w, 4.5, formation, align="C")
+    _anchored_cell(pdf, pill_w, 4.5, formation, align="C")
 
     pitch_x = x + 3
     pitch_y = y + HEADER_H + 2
@@ -172,18 +230,25 @@ def draw_formation_diagram(pdf: FPDF, data: dict) -> None:
 
     pitch_h, total_h = _layout_dimensions(data["team_a"], data["team_b"])
 
-    _draw_team_pitch(
-        pdf, data["team_a"], pdf.l_margin, half, start_y, pitch_h, total_h
-    )
-    _draw_team_pitch(
-        pdf,
-        data["team_b"],
-        pdf.l_margin + half + gap,
-        half,
-        start_y,
-        pitch_h,
-        total_h,
-    )
+    auto_page_break = pdf.auto_page_break
+    bottom_margin = pdf.b_margin
+    pdf.set_auto_page_break(False)
+
+    try:
+        _draw_team_pitch(
+            pdf, data["team_a"], pdf.l_margin, half, start_y, pitch_h, total_h
+        )
+        _draw_team_pitch(
+            pdf,
+            data["team_b"],
+            pdf.l_margin + half + gap,
+            half,
+            start_y,
+            pitch_h,
+            total_h,
+        )
+    finally:
+        pdf.set_auto_page_break(auto_page_break, bottom_margin)
 
     pdf.set_xy(pdf.l_margin, start_y + total_h + 5)
 

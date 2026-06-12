@@ -6,7 +6,11 @@ from pathlib import Path
 import markdown
 from fpdf import FPDF
 
-from services.formation import draw_formation_diagram, extract_formation_blocks
+from services.formation import (
+    draw_formation_diagram,
+    estimate_formation_block_height,
+    extract_formation_blocks,
+)
 from services.pdf_dashboard import write_dashboard_panel
 from services.report_parse import extract_dashboard_block
 from services.pdf_styles import (
@@ -208,8 +212,12 @@ def generate_match_pdf(
         _write_body_html(pdf, before_lineups)
 
     if formations:
+        formation = formations[0]
+        needed_h = estimate_formation_block_height(formation)
+        if pdf.get_y() + needed_h > pdf.page_break_trigger:
+            pdf.add_page()
         _write_section_heading(pdf, "Predicted Lineups")
-        draw_formation_diagram(pdf, formations[0])
+        draw_formation_diagram(pdf, formation)
 
     if after_lineups.strip():
         _write_body_html(pdf, after_lineups)

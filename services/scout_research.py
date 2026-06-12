@@ -38,6 +38,10 @@ def research_match(team_a: str, team_b: str, match_date: str) -> str:
             system=system,
         )
 
-    section_results = map_parallel_ordered(list(RESEARCH_SECTIONS), run_section)
+    section_results = map_parallel_ordered(
+        list(RESEARCH_SECTIONS),
+        run_section,
+        max_workers=len(RESEARCH_SECTIONS),
+    )
     sections = [f"## {title}\n\n{body}" for title, body in section_results]
     return "\n\n---\n\n".join(sections)
