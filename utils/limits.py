@@ -3,6 +3,18 @@ import os
 # Hard caps — no unbounded API loops anywhere in the pipeline.
 MAX_LINEUP_REPAIR_ATTEMPTS = 1
 DEFAULT_MAX_MATCHES_PER_RUN = 8
+DEFAULT_MAX_API_CONCURRENCY = 4
+
+
+def max_api_concurrency() -> int:
+    raw = os.environ.get("MAX_API_CONCURRENCY", "").strip()
+    if not raw:
+        return DEFAULT_MAX_API_CONCURRENCY
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_API_CONCURRENCY
+    return max(1, min(value, 16))
 
 
 def max_matches_per_run() -> int:

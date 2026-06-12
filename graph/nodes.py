@@ -1,9 +1,10 @@
 import logging
 
-from models.state import GraphState, MatchReport, coerce_report, normalize_matches
+from models.state import GraphState, Match, MatchReport, coerce_report, normalize_matches
 from services.gemini import analyze_match
 from services.perplexity import query_perplexity_json
 from services.scout_research import research_match
+from utils.parallel import map_parallel_ordered
 
 logger = logging.getLogger(__name__)
 
@@ -27,43 +28,45 @@ def scheduler_node(state: GraphState) -> dict:
     return {"matches": matches}
 
 
+def _scout_match(match: Match, match_date: str) -> MatchReport:
+    logger.info("Scouting %s vs %s", match.team_a, match.team_b)
+    raw_scout_data = research_match(match.team_a, match.team_b, match_date)
+    return MatchReport(
+        match=match,
+        raw_scout_data=raw_scout_data,
+        final_analysis="",
+    )
+
+
 def scout_node(state: GraphState) -> dict:
     match_date = state["date"]
-    reports: list[MatchReport] = []
-
-    for match in state["matches"]:
-        logger.info("Scouting %s vs %s", match.team_a, match.team_b)
-        raw_scout_data = research_match(match.team_a, match.team_b, match_date)
-        reports.append(
-            MatchReport(
-                match=match,
-                raw_scout_data=raw_scout_data,
-                final_analysis="",
-            )
-        )
-
+    reports = map_parallel_ordered(
+        state["matches"],
+        lambda match: _scout_match(match, match_date),
+    )
     return {"reports": reports}
+
+
+def _analyze_report(item: MatchReport | dict, match_date: str) -> MatchReport:
+    report = coerce_report(item)
+    logger.info("Analyzing %s vs %s", report.match.team_a, report.match.team_b)
+    final_analysis = analyze_match(
+        report.match.team_a,
+        report.match.team_b,
+        report.raw_scout_data,
+        match_date,
+    )
+    return MatchReport(
+        match=report.match,
+        raw_scout_data=report.raw_scout_data,
+        final_analysis=final_analysis,
+    )
 
 
 def analyst_node(state: GraphState) -> dict:
     match_date = state["date"]
-    reports: list[MatchReport] = []
-
-    for item in state["reports"]:
-        report = coerce_report(item)
-        logger.info("Analyzing %s vs %s", report.match.team_a, report.match.team_b)
-        final_analysis = analyze_match(
-            report.match.team_a,
-            report.match.team_b,
-            report.raw_scout_data,
-            match_date,
-        )
-        reports.append(
-            MatchReport(
-                match=report.match,
-                raw_scout_data=report.raw_scout_data,
-                final_analysis=final_analysis,
-            )
-        )
-
+    reports = map_parallel_ordered(
+        state["reports"],
+        lambda item: _analyze_report(item, match_date),
+    )
     return {"reports": reports}

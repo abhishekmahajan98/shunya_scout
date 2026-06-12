@@ -4,6 +4,8 @@ import re
 
 from openai import OpenAI
 
+from utils.api_gate import api_slot
+
 
 def _get_client() -> OpenAI:
     api_key = os.environ.get("PERPLEXITY_API_KEY")
@@ -25,14 +27,15 @@ def _extract_json(text: str) -> str:
 
 
 def query_perplexity(system_prompt: str, user_prompt: str) -> str:
-    client = _get_client()
-    response = client.chat.completions.create(
-        model="sonar-pro",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    with api_slot():
+        client = _get_client()
+        response = client.chat.completions.create(
+            model="sonar-pro",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
     content = response.choices[0].message.content
     if not content:
         raise ValueError("Perplexity returned an empty response")

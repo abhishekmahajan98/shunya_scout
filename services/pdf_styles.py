@@ -19,6 +19,7 @@ BADGE_GK = (254, 249, 195)
 BADGE_BORDER = (209, 213, 219)
 
 FONT = "NotoSans"
+BODY_LINE_HEIGHT = 1.38
 
 
 def _rgb_hex(rgb: tuple[int, int, int]) -> str:
@@ -27,10 +28,10 @@ def _rgb_hex(rgb: tuple[int, int, int]) -> str:
 
 # fpdf2 scales heading b_margin by font size (b_margin * hsize), so keep values small.
 REPORT_TAG_STYLES = {
-    "p": TextStyle(color=INK, font_size_pt=10, t_margin=0, b_margin=0.5),
-    "li": TextStyle(color=INK, font_size_pt=10, l_margin=3, t_margin=0.5),
-    "ul": TextStyle(t_margin=0.5, b_margin=0.3),
-    "ol": TextStyle(t_margin=0.5, b_margin=0.3),
+    "p": TextStyle(color=INK, font_size_pt=10, t_margin=0.3, b_margin=1.0),
+    "li": TextStyle(color=INK, font_size_pt=10, l_margin=3, t_margin=0.6, b_margin=0.6),
+    "ul": TextStyle(t_margin=0.6, b_margin=0.5),
+    "ol": TextStyle(t_margin=0.6, b_margin=0.5),
     "h2": TextStyle(
         color=INK, font_size_pt=11, font_style="B", t_margin=2, b_margin=0.25
     ),
@@ -45,6 +46,9 @@ REPORT_TAG_STYLES = {
 
 
 def style_report_html(html: str) -> str:
+    lh = BODY_LINE_HEIGHT
+    html = re.sub(r"<p>", f'<p line-height="{lh}">', html)
+    html = re.sub(r"<li>", f'<li line-height="{lh}">', html)
     html = re.sub(
         r"(</h[23]>)\s*<table",
         r"\1<br/><table",

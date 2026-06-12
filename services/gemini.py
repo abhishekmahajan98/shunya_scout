@@ -11,7 +11,7 @@ from services.lineup import (
     formation_needs_repair,
     replace_formation_block,
 )
-from utils.limits import MAX_LINEUP_REPAIR_ATTEMPTS
+from utils.api_gate import api_slot
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,8 @@ def generate_lineup_formation(
         model_name=GEMINI_MODEL,
         system_instruction=LINEUP_FORMATION_SYSTEM,
     )
-    response = gemini.generate_content(user_prompt)
+    with api_slot():
+        response = gemini.generate_content(user_prompt)
     text = response.text or ""
     data = _extract_formation_json(text)
     if data and not formation_issues(data):
@@ -127,7 +128,8 @@ def analyze_match(
         model_name=GEMINI_MODEL,
         system_instruction=ANALYST_SYSTEM,
     )
-    response = gemini.generate_content(user_prompt)
+    with api_slot():
+        response = gemini.generate_content(user_prompt)
     markdown = response.text or ""
     return ensure_valid_formation(
         markdown,
