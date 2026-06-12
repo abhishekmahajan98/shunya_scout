@@ -11,5 +11,5 @@ def parse_report_date(value: str) -> date:
 def require_mutable_report_date(value: str) -> str:
     report_date = parse_report_date(value)
     if report_date < date.today():
-        raise ValueError("Only today and future dates can be generated or regenerated")
+        raise ValueError("Only today and future dates can be generated")
     return report_date.isoformat()

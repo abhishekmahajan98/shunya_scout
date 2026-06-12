@@ -7,12 +7,14 @@ from pathlib import Path
 from supabase import Client, create_client
 
 from models.state import MatchReport, coerce_report
+from services.matchday_digest import DIGEST_FILENAME, generate_matchday_digest_pdf
 from services.pdf import generate_match_pdf
 from utils.slug import match_slug
 
 logger = logging.getLogger(__name__)
 
 TABLE = "match_reports"
+DIGEST_SLUG = "matchday-digest"
 
 
 def _require_env(name: str) -> str:
@@ -37,6 +39,10 @@ def storage_bucket() -> str:
 
 def storage_path_for(report_date: str, pdf_slug: str) -> str:
     return f"{report_date}/{pdf_slug}.pdf"
+
+
+def digest_storage_path(report_date: str) -> str:
+    return f"{report_date}/{DIGEST_FILENAME}"
 
 
 def row_to_entry(row: dict) -> dict:
@@ -77,23 +83,123 @@ def get_reports_for_date(report_date: str) -> list[dict]:
         client.table(TABLE)
         .select("*")
         .eq("report_date", report_date)
-        .order("team_a")
+        .order("created_at", desc=True)
         .execute()
         .data
         or []
     )
-    return [row_to_entry(row) for row in rows]
+    seen_slugs: set[str] = set()
+    entries: list[dict] = []
+    for row in rows:
+        slug = row["pdf_slug"]
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        entries.append(row_to_entry(row))
+    entries.sort(key=lambda entry: entry["match"]["team_a"])
+    return entries
 
 
-def get_existing_slugs(report_date: str, *, exclude_quick_test: bool = True) -> set[str]:
+def clear_reports_for_date(report_date: str) -> int:
     client = get_client()
-    query = client.table(TABLE).select("pdf_slug, quick_test").eq("report_date", report_date)
-    rows = query.execute().data or []
-    return {
-        row["pdf_slug"]
+    rows = (
+        client.table(TABLE)
+        .select("pdf_slug, storage_path")
+        .eq("report_date", report_date)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        return 0
+
+    bucket = storage_bucket()
+    paths = [
+        row.get("storage_path") or storage_path_for(report_date, row["pdf_slug"])
         for row in rows
-        if not exclude_quick_test or not row.get("quick_test")
-    }
+    ]
+    paths.append(digest_storage_path(report_date))
+    try:
+        client.storage.from_(bucket).remove(paths)
+    except Exception:
+        logger.exception("Failed to remove storage objects for %s", report_date)
+
+    client.table(TABLE).delete().eq("report_date", report_date).execute()
+    logger.info("Cleared %d report(s) for %s", len(rows), report_date)
+    return len(rows)
+
+
+def get_existing_slugs(report_date: str) -> set[str]:
+    client = get_client()
+    rows = (
+        client.table(TABLE)
+        .select("pdf_slug")
+        .eq("report_date", report_date)
+        .execute()
+        .data
+        or []
+    )
+    return {row["pdf_slug"] for row in rows}
+
+
+def get_markdown_reports_for_date(report_date: str) -> list[dict]:
+    client = get_client()
+    rows = (
+        client.table(TABLE)
+        .select("team_a, team_b, pdf_slug, markdown, created_at")
+        .eq("report_date", report_date)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    seen_slugs: set[str] = set()
+    reports: list[dict] = []
+    for row in rows:
+        slug = row["pdf_slug"]
+        if slug in seen_slugs or not row.get("markdown"):
+            continue
+        seen_slugs.add(slug)
+        reports.append(
+            {
+                "team_a": row["team_a"],
+                "team_b": row["team_b"],
+                "pdf_slug": slug,
+                "markdown": row["markdown"],
+            }
+        )
+    reports.sort(key=lambda item: item["team_a"])
+    return reports
+
+
+def build_and_save_matchday_digest(report_date: str) -> bool:
+    reports = get_markdown_reports_for_date(report_date)
+    if not reports:
+        return False
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf_path = generate_matchday_digest_pdf(report_date, reports, Path(tmp))
+        pdf_bytes = pdf_path.read_bytes()
+
+    client = get_client()
+    bucket = storage_bucket()
+    path = digest_storage_path(report_date)
+    client.storage.from_(bucket).upload(
+        path,
+        pdf_bytes,
+        file_options={"content-type": "application/pdf", "upsert": "true"},
+    )
+    logger.info("Saved matchday digest to Supabase: %s", path)
+    return True
+
+
+def download_digest_bytes(report_date: str) -> bytes | None:
+    client = get_client()
+    path = digest_storage_path(report_date)
+    try:
+        return client.storage.from_(storage_bucket()).download(path)
+    except Exception:
+        return None
 
 
 def download_pdf_bytes(report_date: str, pdf_slug: str) -> bytes | None:

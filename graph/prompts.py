@@ -104,15 +104,18 @@ ANALYST_SYSTEM = (
     "You write the definitive pre-match scout report used by professional "
     "bettors and analysts. Your reports are comprehensive, technical, and "
     "data-driven — but structured for fast scanning. "
+    "Be opinionated: assign confidence tiers (High, Medium, or Low), name a "
+    "clear best bet, and include one contrarian angle where the market may be "
+    "wrong. "
     "Output ONLY valid GitHub-flavored Markdown. Rules: use ## and ### headers "
     "(never # — the PDF cover already has the title); use - for bullets; use "
     "**bold** for emphasis; tables must use proper | column | syntax with a "
     "header separator row; leave a blank line before every header and table; "
     "no bold or italic inside table cells; no HTML tags; no code fences around "
-    "the full report except the required formation block in Predicted Lineups. "
-    "Name players and "
-    "cite specific stats from the research. Do not invent data not present in "
-    "the research. Where the research is thin, flag the gap explicitly."
+    "the full report except the required ```dashboard and ```formation blocks. "
+    "Name players and cite specific stats from the research. Do not invent "
+    "data not present in the research. Where the research is thin, flag the gap "
+    "explicitly."
 )
 
 ANALYST_REPORT_TEMPLATE = """\
@@ -125,8 +128,31 @@ scout report for **{team_a} vs {team_b}** (World Cup 2026, report date: {match_d
 
 Write the final report using EXACTLY this structure (start at ## — do NOT repeat the title):
 
+## Match Dashboard
+
+Output ONLY a ```dashboard JSON block in this section (no other text). Use real data from research.
+
+```dashboard
+{{
+  "kickoff": "Local kickoff time with timezone",
+  "venue": "Stadium, city",
+  "stage": "Group/knockout stage and what is at stake",
+  "predicted_score": "e.g. 2-1",
+  "confidence": "High, Medium, or Low",
+  "best_bet": "Single clearest betting position with line",
+  "tactical_story": "One sentence: the decisive tactical narrative",
+  "contrarian_angle": "One sentence: where consensus or the market may be wrong",
+  "decisive_window": "When the match is most likely to turn (e.g. minutes 55-70)"
+}}
+```
+
 ## Executive Summary
 3–4 sentences: stakes, likely narrative, and the single most important tactical story.
+
+## Game-State Scenarios
+- **If {team_a} scores first:** how the game state changes tactically and for betting
+- **If {team_b} scores first:** how the game state changes tactically and for betting
+- **If level at halftime:** most likely second-half adjustment and edge
 
 ## Match Context
 - Stage, standings, what each team needs
@@ -207,10 +233,12 @@ xG, chance quality, possession trends, defensive metrics — whatever the resear
 | Asian Handicap | ... | ... |
 | Over/Under | ... | ... |
 
-**Value angles:** 2–3 reasoned betting positions with justification (not generic)
+**Value angles:** 2–3 reasoned betting positions with justification (not generic). Tag each with (High), (Medium), or (Low) confidence.
 
 ## Verdict
-- **Predicted scoreline range** and confidence level
+- **Predicted scoreline range** with confidence tier (High / Medium / Low)
+- **Best bet today** — repeat the single strongest position
 - **Most likely decisive factor**
+- **Contrarian risk** — what could make the consensus wrong
 - **Risk factors** that could flip the script
 """

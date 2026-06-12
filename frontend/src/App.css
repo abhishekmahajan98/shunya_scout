@@ -53,37 +53,18 @@
   color: inherit;
 }
 
-.run-btn,
-.quick-btn,
-.regen-btn {
+.run-btn {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
+  color: #fff;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   cursor: pointer;
 }
 
-.run-btn {
-  color: #fff;
-  background: var(--accent);
-}
-
-.quick-btn {
-  color: var(--accent);
-  background: #fff;
-  border: 1px solid var(--accent);
-}
-
-.regen-btn {
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-}
-
-.run-btn:disabled,
-.quick-btn:disabled,
-.regen-btn:disabled {
+.run-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -281,4 +262,39 @@
   text-align: left;
   cursor: pointer;
   font: inherit;
+}
+
+.digest-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+}
+
+.digest-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.digest-hint {
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.digest-btn {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
 }

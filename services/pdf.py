@@ -7,6 +7,8 @@ import markdown
 from fpdf import FPDF
 
 from services.formation import draw_formation_diagram, extract_formation_blocks
+from services.pdf_dashboard import write_dashboard_panel
+from services.report_parse import extract_dashboard_block
 from services.pdf_styles import (
     ACCENT,
     BORDER,
@@ -98,7 +100,13 @@ def _write_body_html(pdf: ScoutPDF, markdown_text: str) -> None:
     pdf.ln(1)
 
 
-def _write_cover(pdf: ScoutPDF, team_a: str, team_b: str, match_date: str) -> None:
+def _write_cover(
+    pdf: ScoutPDF,
+    team_a: str,
+    team_b: str,
+    match_date: str,
+    dashboard: dict | None = None,
+) -> None:
     generated_at = datetime.now().strftime("%B %d, %Y at %H:%M UTC")
 
     # Accent bar
@@ -135,8 +143,13 @@ def _write_cover(pdf: ScoutPDF, team_a: str, team_b: str, match_date: str) -> No
     pdf.set_line_width(0.3)
     pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
     pdf.set_line_width(0.2)
-    pdf.ln(8)
+    pdf.ln(6)
     pdf.set_text_color(*INK)
+
+    if dashboard:
+        write_dashboard_panel(pdf, dashboard)
+    else:
+        pdf.ln(2)
 
 
 def _write_section_heading(pdf: ScoutPDF, title: str) -> None:
@@ -181,6 +194,7 @@ def generate_match_pdf(
     md_path.write_text(markdown_text, encoding="utf-8")
 
     body = _normalize_unicode(_strip_leading_h1(markdown_text))
+    body, dashboard = extract_dashboard_block(body)
     body, formations = extract_formation_blocks(body)
     before_lineups, after_lineups = _split_at_lineups(body)
 
@@ -188,7 +202,7 @@ def generate_match_pdf(
     pdf.set_auto_page_break(auto=True, margin=22)
     pdf.set_top_margin(20)
     pdf.add_page()
-    _write_cover(pdf, team_a, team_b, match_date)
+    _write_cover(pdf, team_a, team_b, match_date, dashboard)
 
     if before_lineups.strip():
         _write_body_html(pdf, before_lineups)

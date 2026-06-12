@@ -8,9 +8,7 @@ import {
   fetchMe,
   fetchReportDates,
   logout,
-  regeneratePipeline,
   runPipeline,
-  runQuickReport,
   todayIso,
 } from "./api";
 import { clearSession, getAccessToken } from "./auth";
@@ -19,15 +17,14 @@ import "./App.css";
 export default function App() {
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
+  const [digestUrl, setDigestUrl] = useState<string | null>(null);
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(todayIso());
-  const [loading, setLoading] = useState<"full" | "quick" | "regen" | null>(
-    null,
-  );
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const canMutate = selectedDate >= todayIso();
+  const canGenerate = selectedDate >= todayIso();
 
   const dateOptions = useMemo(() => {
     const merged = new Set([todayIso(), ...dates, selectedDate]);
@@ -58,6 +55,7 @@ export default function App() {
     try {
       const index = await fetchDownloads(reportDate);
       setDownloads(index.downloads);
+      setDigestUrl(index.digest_url ?? null);
     } catch (err) {
       if (err instanceof Error && err.message.includes("404")) {
         setDownloads([]);
@@ -84,81 +82,45 @@ export default function App() {
     loadDownloads(selectedDate);
   }, [loadDownloads, selectedDate, user]);
 
-  function emailNotice(
-    result: {
-      email_sent?: boolean;
-      email_to?: string | null;
-      email_error?: string | null;
-      attachment_count?: number;
-      report_count: number;
-      generated_count?: number;
-      skipped_count?: number;
-    },
-    label: string,
-  ) {
+  function emailNotice(result: {
+    email_sent?: boolean;
+    email_to?: string | null;
+    email_error?: string | null;
+    attachment_count?: number;
+    report_count: number;
+    generated_count?: number;
+  }) {
     if (result.email_sent && result.email_to) {
       const count = result.attachment_count ?? result.report_count;
       const files = count === 1 ? "1 PDF" : `${count} PDFs`;
       const generated =
         result.generated_count != null
-          ? ` Generated ${result.generated_count}, skipped ${result.skipped_count ?? 0}.`
+          ? ` ${result.generated_count} report${result.generated_count === 1 ? "" : "s"} generated.`
           : "";
       setNotice(
-        `${label} emailed to ${result.email_to} (${files} attached).${generated}`,
+        `Reports emailed to ${result.email_to} (${files} attached).${generated}`,
       );
       return;
     }
     if (result.email_error) {
-      setNotice(`${label} finished, but email failed: ${result.email_error}`);
+      setNotice(`Reports finished, but email failed: ${result.email_error}`);
     }
   }
 
-  async function handleRun() {
-    setLoading("full");
+  async function handleGenerate() {
+    setLoading(true);
     setError(null);
     setNotice(null);
     try {
       const result = await runPipeline(selectedDate);
       setDownloads(result.downloads);
-      emailNotice(result, "Reports");
+      setDigestUrl(result.digest_url ?? null);
+      emailNotice(result);
       await loadDates();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pipeline failed");
+      setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
-      setLoading(null);
-    }
-  }
-
-  async function handleRegenerate() {
-    setLoading("regen");
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await regeneratePipeline(selectedDate);
-      setDownloads(result.downloads);
-      emailNotice(result, "Regenerated reports");
-      await loadDates();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Regenerate failed");
-    } finally {
-      setLoading(null);
-    }
-  }
-
-  async function handleQuickTest() {
-    setLoading("quick");
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await runQuickReport();
-      setDownloads(result.downloads);
-      setSelectedDate(result.date);
-      emailNotice(result, "Quick test");
-      await loadDates();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Quick test failed");
-    } finally {
-      setLoading(null);
+      setLoading(false);
     }
   }
 
@@ -221,32 +183,16 @@ export default function App() {
             Sign out
           </button>
           <button
-            className="quick-btn"
-            onClick={handleQuickTest}
-            disabled={loading !== null}
-          >
-            {loading === "quick" ? "Testing…" : "Quick Test PDF"}
-          </button>
-          {canMutate && (
-            <button
-              className="regen-btn"
-              onClick={handleRegenerate}
-              disabled={loading !== null}
-            >
-              {loading === "regen" ? "Regenerating…" : "Regenerate Day"}
-            </button>
-          )}
-          <button
             className="run-btn"
-            onClick={handleRun}
-            disabled={loading !== null || !canMutate}
+            onClick={handleGenerate}
+            disabled={loading || !canGenerate}
             title={
-              canMutate
-                ? "Generate missing reports for this date"
+              canGenerate
+                ? "Generate or refresh all reports for this date"
                 : "Only today and future dates can be generated"
             }
           >
-            {loading === "full" ? "Generating…" : "Generate Reports"}
+            {loading ? "Generating…" : "Generate Reports"}
           </button>
         </div>
       </header>
@@ -272,10 +218,28 @@ export default function App() {
       {error && <p className="error">{error}</p>}
       {notice && <p className="notice">{notice}</p>}
 
+      {digestUrl && (
+        <section className="digest-banner">
+          <div>
+            <h2 className="digest-title">Matchday digest</h2>
+            <p className="digest-hint">One PDF with every fixture summary for {selectedDate}.</p>
+          </div>
+          <button
+            type="button"
+            className="digest-btn"
+            onClick={() =>
+              downloadPdf(digestUrl, `shunya-scout-matchday-${selectedDate}.pdf`)
+            }
+          >
+            Download digest
+          </button>
+        </section>
+      )}
+
       {downloads.length === 0 ? (
         <section className="empty">
           <p>No PDF reports for {selectedDate} yet.</p>
-          {canMutate ? (
+          {canGenerate ? (
             <p className="hint">Generate reports for this matchday.</p>
           ) : (
             <p className="hint">Browse another date from the dropdown.</p>
@@ -295,9 +259,7 @@ export default function App() {
                   {entry.match.team_a}{" "}
                   <span className="vs">vs</span> {entry.match.team_b}
                 </h2>
-                <p className="file-label">
-                  {entry.quick_test ? "Quick test PDF" : "Shunya Scout PDF"}
-                </p>
+                <p className="file-label">Shunya Scout PDF</p>
               </div>
               <span className="download-icon">↓</span>
             </button>

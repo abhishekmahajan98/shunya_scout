@@ -18,27 +18,24 @@ export interface DownloadEntry {
   match: Match;
   pdf_slug: string;
   pdf_url: string;
-  quick_test?: boolean;
   created_at?: string | null;
 }
 
 export interface DownloadIndex {
   date: string;
   downloads: DownloadEntry[];
+  digest_url?: string;
 }
 
-export interface RunResult {
-  date: string;
+export interface RunResult extends DownloadIndex {
   match_count: number;
   report_count: number;
   generated_count?: number;
   skipped_count?: number;
-  downloads: DownloadEntry[];
   email_sent?: boolean;
   email_to?: string | null;
   email_error?: string | null;
   attachment_count?: number;
-  quick_test?: boolean;
 }
 
 export interface SignupResult extends Partial<AuthSession> {
@@ -179,22 +176,6 @@ export function runPipeline(date?: string): Promise<RunResult> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(date ? { date } : {}),
-  });
-}
-
-export function regeneratePipeline(date: string): Promise<RunResult> {
-  return request("/run/regenerate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ date }),
-  });
-}
-
-export function runQuickReport(): Promise<RunResult> {
-  return request("/run/quick", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
   });
 }
 

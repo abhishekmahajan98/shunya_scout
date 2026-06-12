@@ -56,6 +56,12 @@ create policy "anon_update_match_reports"
   to anon
   using (true);
 
+drop policy if exists "anon_delete_match_reports" on public.match_reports;
+create policy "anon_delete_match_reports"
+  on public.match_reports for delete
+  to anon
+  using (true);
+
 -- Storage policies for the "reports" bucket
 drop policy if exists "anon_read_reports_bucket" on storage.objects;
 create policy "anon_read_reports_bucket"
@@ -72,5 +78,11 @@ create policy "anon_insert_reports_bucket"
 drop policy if exists "anon_update_reports_bucket" on storage.objects;
 create policy "anon_update_reports_bucket"
   on storage.objects for update
+  to anon
+  using (bucket_id = 'reports');
+
+drop policy if exists "anon_delete_reports_bucket" on storage.objects;
+create policy "anon_delete_reports_bucket"
+  on storage.objects for delete
   to anon
   using (bucket_id = 'reports');

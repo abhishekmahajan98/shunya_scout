@@ -8,7 +8,7 @@ Automated daily pipeline that retrieves FIFA World Cup fixtures, scrapes tactica
 Scheduler (Perplexity) → Scout (Perplexity) → Analyst (Gemini) → Report
 ```
 
-Built with **LangGraph** (state machine) and **FastAPI** (API), deployed on **Railway** with a daily cron job. Optional **Vite + React** frontend for viewing reports.
+Built with **LangGraph** (state machine) and **FastAPI** (API), deployed on **Railway**. Optional **Vite + React** frontend for viewing reports.
 
 ## Setup
 
@@ -77,8 +77,6 @@ crontab -e
 # Paste the line from scripts/crontab.example (update the project path)
 ```
 
-**Railway:** `railway.toml` runs `scripts/daily_job.py` daily. Cron uses UTC — adjust the schedule in `railway.toml` if you need to account for daylight saving (9 AM EDT = `0 13 * * *`, 9 AM EST = `0 14 * * *`).
-
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
@@ -87,8 +85,7 @@ crontab -e
 | POST | `/auth/refresh` | Refresh session |
 | GET | `/auth/me` | Current user (auth required) |
 | POST | `/auth/logout` | Sign out (auth required) |
-| POST | `/run` | Generate missing reports for a date (today/future only) |
-| POST | `/run/regenerate` | Regenerate all reports for a date (today/future only) |
+| POST | `/run` | Generate or refresh all reports for a date (today/future only) |
 | GET | `/reports` | List available report dates |
 | GET | `/reports/{date}` | List PDF downloads for a date |
 | GET | `/reports/today/latest` | List today's PDF downloads |
@@ -152,7 +149,7 @@ In Railway → **Variables**, add everything from `.env.example`:
 uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-`railway.toml` configures the daily cron (`scripts/daily_job.py`).
+Run `scripts/daily_job.py` manually or via local cron (see `scripts/crontab.example`).
 
 ### 5. Verify
 
