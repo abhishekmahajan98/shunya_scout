@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+
+[cron]
+# 9:00 AM US Eastern (13:00 UTC during EDT, 14:00 UTC during EST)
+schedule = "0 13 * * *"
+command = "python scripts/daily_job.py"
