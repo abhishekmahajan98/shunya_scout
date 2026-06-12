@@ -1,17 +1,20 @@
-import json
 import logging
 import os
 from datetime import date
-from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import Response
+from pydantic import BaseModel, EmailStr
 
+from dependencies.auth import require_user
 from run_graph import load_report_entries, run_pipeline, run_quick_report
+from services import reports_db
+from services.auth import AuthError, refresh_session, sign_in, sign_out, sign_up
 from services.email import send_daily_report_email
+from services.frontend_static import frontend_dist_exists, mount_frontend
+from utils.dates import parse_report_date, require_mutable_report_date
 from utils.slug import match_slug
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,8 @@ app = FastAPI(
     title="Shunya Scout",
     description="Daily multi-agent pipeline for FIFA World Cup match reports",
     version="1.0.0",
+    docs_url=None if frontend_dist_exists() else "/docs",
+    redoc_url=None if frontend_dist_exists() else "/redoc",
 )
 
 app.add_middleware(
@@ -31,8 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-REPORTS_DIR = Path("data/reports")
 
 
 class RunRequest(BaseModel):
@@ -45,11 +48,13 @@ class QuickReportRequest(BaseModel):
     team_b: str = "France"
 
 
-def _load_index(report_date: str) -> dict:
-    report_path = REPORTS_DIR / f"{report_date}.json"
-    if not report_path.exists():
-        raise HTTPException(status_code=404, detail=f"No report for {report_date}")
-    return json.loads(report_path.read_text())
+class AuthRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 def _download_entry(report_date: str, entry: dict) -> dict:
@@ -59,6 +64,8 @@ def _download_entry(report_date: str, entry: dict) -> dict:
         "match": match,
         "pdf_slug": slug,
         "pdf_url": f"/reports/{report_date}/{slug}.pdf",
+        "quick_test": entry.get("quick_test", False),
+        "created_at": entry.get("created_at"),
     }
 
 
@@ -89,38 +96,121 @@ def _send_report_email(
     }
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.post("/run")
-def trigger_pipeline(body: RunRequest | None = None):
-    target_date = body.date if body else None
-    try:
-        result = run_pipeline(target_date)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    report_date = result.get("date") or (
-        body.date if body and body.date else date.today().isoformat()
-    )
-    entries = load_report_entries(report_date)
-    downloads = [_download_entry(report_date, r) for r in entries]
-
-    email = _send_report_email(report_date, entries)
-
+def _pipeline_response(result: dict, entries: list[dict], *, email: dict) -> dict:
+    downloads = [_download_entry(result["date"], entry) for entry in entries]
     return {
-        "date": report_date,
+        "date": result["date"],
         "match_count": len(result.get("matches", [])),
         "report_count": len(downloads),
+        "generated_count": result.get("generated_count", 0),
+        "skipped_count": result.get("skipped_count", 0),
         "downloads": downloads,
         **email,
     }
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/auth/signup")
+def signup(body: AuthRequest):
+    try:
+        session = sign_up(body.email, body.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    if not session.get("access_token"):
+        return {
+            "message": "Check your email to confirm your account.",
+            "user": session["user"],
+        }
+    return session
+
+
+@app.post("/auth/login")
+def login(body: AuthRequest):
+    try:
+        return sign_in(body.email, body.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@app.post("/auth/refresh")
+def refresh(body: RefreshRequest):
+    try:
+        return refresh_session(body.refresh_token)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@app.get("/auth/me")
+def me(user: dict = Depends(require_user)):
+    return {"user": user}
+
+
+@app.post("/auth/logout")
+def logout(
+    user: dict = Depends(require_user),
+    authorization: str | None = Header(default=None),
+):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        try:
+            sign_out(token)
+        except AuthError:
+            pass
+    return {"ok": True}
+
+
+@app.post("/run")
+def trigger_pipeline(
+    body: RunRequest | None = None,
+    user: dict = Depends(require_user),
+):
+    target_date = body.date if body else None
+    if target_date:
+        try:
+            require_mutable_report_date(target_date)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        result = run_pipeline(target_date, skip_existing=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    report_date = result["date"]
+    entries = load_report_entries(report_date)
+    email = _send_report_email(report_date, entries)
+    return _pipeline_response(result, entries, email=email)
+
+
+@app.post("/run/regenerate")
+def regenerate_pipeline(
+    body: RunRequest,
+    user: dict = Depends(require_user),
+):
+    if not body.date:
+        raise HTTPException(status_code=400, detail="date is required")
+    try:
+        require_mutable_report_date(body.date)
+        result = run_pipeline(body.date, regenerate=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    report_date = result["date"]
+    entries = load_report_entries(report_date)
+    email = _send_report_email(report_date, entries)
+    return _pipeline_response(result, entries, email=email)
+
+
 @app.post("/run/quick")
-def trigger_quick_report(body: QuickReportRequest | None = None):
+def trigger_quick_report(
+    body: QuickReportRequest | None = None,
+    user: dict = Depends(require_user),
+):
     req = body or QuickReportRequest()
     try:
         result = run_quick_report(req.team_a, req.team_b, req.date)
@@ -134,6 +224,8 @@ def trigger_quick_report(body: QuickReportRequest | None = None):
         "date": report_date,
         "match_count": 1,
         "report_count": 1,
+        "generated_count": 1,
+        "skipped_count": 0,
         "quick_test": True,
         "downloads": entries,
         **email,
@@ -141,43 +233,48 @@ def trigger_quick_report(body: QuickReportRequest | None = None):
 
 
 @app.get("/reports")
-def list_report_dates():
-    if not REPORTS_DIR.exists():
-        return {"dates": []}
-    dates = sorted(
-        (p.stem for p in REPORTS_DIR.glob("*.json")),
-        reverse=True,
-    )
-    return {"dates": dates}
+def list_report_dates(user: dict = Depends(require_user)):
+    return {"dates": reports_db.list_report_dates()}
 
 
 @app.get("/reports/today/latest")
-def get_today_downloads():
+def get_today_downloads(user: dict = Depends(require_user)):
     today = date.today().isoformat()
-    index = _load_index(today)
+    entries = load_report_entries(today)
     return {
         "date": today,
-        "downloads": [_download_entry(today, r) for r in index["reports"]],
+        "downloads": [_download_entry(today, entry) for entry in entries],
     }
 
 
 @app.get("/reports/{report_date}")
-def get_report_index(report_date: str):
-    index = _load_index(report_date)
+def get_report_index(report_date: str, user: dict = Depends(require_user)):
+    try:
+        parse_report_date(report_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    entries = load_report_entries(report_date)
     return {
         "date": report_date,
-        "downloads": [_download_entry(report_date, r) for r in index["reports"]],
+        "downloads": [_download_entry(report_date, entry) for entry in entries],
     }
 
 
 @app.get("/reports/{report_date}/{pdf_slug}.pdf")
-def download_report_pdf(report_date: str, pdf_slug: str):
-    pdf_path = REPORTS_DIR / report_date / f"{pdf_slug}.pdf"
-    if not pdf_path.exists():
+def download_report_pdf(
+    report_date: str,
+    pdf_slug: str,
+    user: dict = Depends(require_user),
+):
+    pdf_bytes = reports_db.download_pdf_bytes(report_date, pdf_slug)
+    if not pdf_bytes:
         raise HTTPException(status_code=404, detail="PDF not found")
     filename = f"{pdf_slug}-shunya-scout.pdf"
-    return FileResponse(
-        pdf_path,
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
-        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+mount_frontend(app)

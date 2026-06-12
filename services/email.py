@@ -1,15 +1,13 @@
 import base64
 import logging
 import os
-from pathlib import Path
 
 import resend
 from resend.emails._attachment import Attachment
 
-logger = logging.getLogger(__name__)
+from services import reports_db
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-REPORTS_DIR = PROJECT_ROOT / "data" / "reports"
+logger = logging.getLogger(__name__)
 
 
 def _require_env(name: str) -> str:
@@ -25,7 +23,7 @@ def _build_html(report_date: str, entries: list[dict], attachment_count: int) ->
         <div style="font-family: sans-serif; color: #111827; max-width: 560px;">
           <h2 style="color: #059669; margin-bottom: 8px;">Shunya Scout</h2>
           <p>No match reports were generated for <strong>{report_date}</strong>.</p>
-          <p style="color: #6b7280; font-size: 14px;">The pipeline ran successfully but found no fixtures for today.</p>
+          <p style="color: #6b7280; font-size: 14px;">The pipeline ran successfully but found no fixtures for this date.</p>
         </div>
         """
 
@@ -46,38 +44,18 @@ def _build_html(report_date: str, entries: list[dict], attachment_count: int) ->
     """
 
 
-def _pdf_files_for_date(report_date: str, entries: list[dict]) -> list[tuple[str, Path]]:
-    pdf_dir = REPORTS_DIR / report_date
-    seen: set[str] = set()
-    files: list[tuple[str, Path]] = []
-
-    for entry in entries:
-        slug = entry["pdf_slug"]
-        pdf_path = pdf_dir / f"{slug}.pdf"
-        filename = f"{slug}-shunya-scout.pdf"
-        if pdf_path.exists() and filename not in seen:
-            files.append((filename, pdf_path))
-            seen.add(filename)
-        elif not pdf_path.exists():
-            logger.warning("PDF missing for %s at %s", slug, pdf_path)
-
-    if pdf_dir.exists():
-        for pdf_path in sorted(pdf_dir.glob("*.pdf")):
-            filename = f"{pdf_path.stem}-shunya-scout.pdf"
-            if filename not in seen:
-                files.append((filename, pdf_path))
-                seen.add(filename)
-
-    return files
-
-
 def _pdf_attachments(report_date: str, entries: list[dict]) -> list[Attachment]:
     attachments: list[Attachment] = []
-    for filename, pdf_path in _pdf_files_for_date(report_date, entries):
+    for entry in entries:
+        slug = entry["pdf_slug"]
+        pdf_bytes = reports_db.download_pdf_bytes(report_date, slug)
+        if not pdf_bytes:
+            logger.warning("PDF missing in storage for %s on %s", slug, report_date)
+            continue
         attachments.append(
             {
-                "filename": filename,
-                "content": base64.b64encode(pdf_path.read_bytes()).decode("utf-8"),
+                "filename": f"{slug}-shunya-scout.pdf",
+                "content": base64.b64encode(pdf_bytes).decode("utf-8"),
                 "content_type": "application/pdf",
             }
         )
@@ -102,7 +80,7 @@ def send_daily_report_email(
     attachments = _pdf_attachments(report_date, entries)
     if entries and not attachments:
         raise ValueError(
-            f"Reports were generated for {report_date} but no PDF files were found to attach"
+            f"Reports exist for {report_date} but no PDF files were found in storage"
         )
 
     prefix = "Shunya Scout [Quick Test]" if quick_test else "Shunya Scout"

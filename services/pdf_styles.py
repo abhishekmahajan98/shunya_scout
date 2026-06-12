@@ -25,15 +25,17 @@ def _rgb_hex(rgb: tuple[int, int, int]) -> str:
     return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
-# Override fpdf2 heading defaults (large red margins) with compact section styles.
+# fpdf2 scales heading b_margin by font size (b_margin * hsize), so keep values small.
 REPORT_TAG_STYLES = {
-    "p": FontFace(color=INK, size_pt=10),
-    "li": FontFace(color=INK, size_pt=10),
+    "p": TextStyle(color=INK, font_size_pt=10, t_margin=0, b_margin=0.5),
+    "li": TextStyle(color=INK, font_size_pt=10, l_margin=3, t_margin=0.5),
+    "ul": TextStyle(t_margin=0.5, b_margin=0.3),
+    "ol": TextStyle(t_margin=0.5, b_margin=0.3),
     "h2": TextStyle(
-        color=INK, font_size_pt=11, font_style="B", t_margin=4, b_margin=3
+        color=INK, font_size_pt=11, font_style="B", t_margin=2, b_margin=0.25
     ),
     "h3": TextStyle(
-        color=INK_MUTED, font_size_pt=10, font_style="B", t_margin=3, b_margin=2
+        color=INK_MUTED, font_size_pt=10, font_style="B", t_margin=1.5, b_margin=0.2
     ),
     "strong": FontFace(emphasis=TextEmphasis.B),
     "b": FontFace(emphasis=TextEmphasis.B),

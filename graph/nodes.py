@@ -18,7 +18,7 @@ def scheduler_node(state: GraphState) -> dict:
     current_date = state["date"]
     user_prompt = (
         f"Search the web for the official FIFA World Cup 2026 matches "
-        f"scheduled for today, {current_date}. Return the matchups as a JSON "
+        f"scheduled for {current_date}. Return the matchups as a JSON "
         "array with 'team_a' and 'team_b' keys."
     )
     raw_matches = query_perplexity_json(SCHEDULER_SYSTEM, user_prompt)

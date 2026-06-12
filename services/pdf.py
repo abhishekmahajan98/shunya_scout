@@ -155,7 +155,7 @@ def _write_section_heading(pdf: ScoutPDF, title: str) -> None:
     y2 = pdf.get_y()
     pdf.set_draw_color(*BORDER)
     pdf.line(pdf.l_margin, y2, pdf.w - pdf.r_margin, y2)
-    pdf.ln(5)
+    pdf.ln(2)
 
 
 def _split_at_lineups(markdown_text: str) -> tuple[str, str]:
