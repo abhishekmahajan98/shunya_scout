@@ -17,7 +17,6 @@ import "./App.css";
 export default function App() {
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined);
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
-  const [digestUrl, setDigestUrl] = useState<string | null>(null);
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [loading, setLoading] = useState(false);
@@ -55,7 +54,6 @@ export default function App() {
     try {
       const index = await fetchDownloads(reportDate);
       setDownloads(index.downloads);
-      setDigestUrl(index.digest_url ?? null);
     } catch (err) {
       if (err instanceof Error && err.message.includes("404")) {
         setDownloads([]);
@@ -114,7 +112,6 @@ export default function App() {
     try {
       const result = await runPipeline(selectedDate);
       setDownloads(result.downloads);
-      setDigestUrl(result.digest_url ?? null);
       emailNotice(result);
       await loadDates();
     } catch (err) {
@@ -217,24 +214,6 @@ export default function App() {
 
       {error && <p className="error">{error}</p>}
       {notice && <p className="notice">{notice}</p>}
-
-      {digestUrl && (
-        <section className="digest-banner">
-          <div>
-            <h2 className="digest-title">Matchday digest</h2>
-            <p className="digest-hint">One PDF with every fixture summary for {selectedDate}.</p>
-          </div>
-          <button
-            type="button"
-            className="digest-btn"
-            onClick={() =>
-              downloadPdf(digestUrl, `shunya-scout-matchday-${selectedDate}.pdf`)
-            }
-          >
-            Download digest
-          </button>
-        </section>
-      )}
 
       {downloads.length === 0 ? (
         <section className="empty">

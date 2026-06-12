@@ -7,14 +7,13 @@ from pathlib import Path
 from supabase import Client, create_client
 
 from models.state import MatchReport, coerce_report
-from services.matchday_digest import DIGEST_FILENAME, generate_matchday_digest_pdf
 from services.pdf import generate_match_pdf
 from utils.slug import match_slug
 
 logger = logging.getLogger(__name__)
 
 TABLE = "match_reports"
-DIGEST_SLUG = "matchday-digest"
+LEGACY_DIGEST_FILENAME = "matchday-digest.pdf"
 
 
 def _require_env(name: str) -> str:
@@ -39,10 +38,6 @@ def storage_bucket() -> str:
 
 def storage_path_for(report_date: str, pdf_slug: str) -> str:
     return f"{report_date}/{pdf_slug}.pdf"
-
-
-def digest_storage_path(report_date: str) -> str:
-    return f"{report_date}/{DIGEST_FILENAME}"
 
 
 def row_to_entry(row: dict) -> dict:
@@ -118,7 +113,7 @@ def clear_reports_for_date(report_date: str) -> int:
         row.get("storage_path") or storage_path_for(report_date, row["pdf_slug"])
         for row in rows
     ]
-    paths.append(digest_storage_path(report_date))
+    paths.append(f"{report_date}/{LEGACY_DIGEST_FILENAME}")
     try:
         client.storage.from_(bucket).remove(paths)
     except Exception:
@@ -170,36 +165,6 @@ def get_markdown_reports_for_date(report_date: str) -> list[dict]:
         )
     reports.sort(key=lambda item: item["team_a"])
     return reports
-
-
-def build_and_save_matchday_digest(report_date: str) -> bool:
-    reports = get_markdown_reports_for_date(report_date)
-    if not reports:
-        return False
-
-    with tempfile.TemporaryDirectory() as tmp:
-        pdf_path = generate_matchday_digest_pdf(report_date, reports, Path(tmp))
-        pdf_bytes = pdf_path.read_bytes()
-
-    client = get_client()
-    bucket = storage_bucket()
-    path = digest_storage_path(report_date)
-    client.storage.from_(bucket).upload(
-        path,
-        pdf_bytes,
-        file_options={"content-type": "application/pdf", "upsert": "true"},
-    )
-    logger.info("Saved matchday digest to Supabase: %s", path)
-    return True
-
-
-def download_digest_bytes(report_date: str) -> bytes | None:
-    client = get_client()
-    path = digest_storage_path(report_date)
-    try:
-        return client.storage.from_(storage_bucket()).download(path)
-    except Exception:
-        return None
 
 
 def download_pdf_bytes(report_date: str, pdf_slug: str) -> bytes | None:

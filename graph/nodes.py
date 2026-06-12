@@ -4,7 +4,6 @@ from models.state import GraphState, Match, MatchReport, coerce_report, normaliz
 from services.gemini import analyze_match
 from services.perplexity import query_perplexity_json
 from services.scout_research import research_match
-from utils.parallel import map_parallel_ordered
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +39,7 @@ def _scout_match(match: Match, match_date: str) -> MatchReport:
 
 def scout_node(state: GraphState) -> dict:
     match_date = state["date"]
-    reports = map_parallel_ordered(
-        state["matches"],
-        lambda match: _scout_match(match, match_date),
-    )
+    reports = [_scout_match(match, match_date) for match in state["matches"]]
     return {"reports": reports}
 
 
@@ -65,8 +61,5 @@ def _analyze_report(item: MatchReport | dict, match_date: str) -> MatchReport:
 
 def analyst_node(state: GraphState) -> dict:
     match_date = state["date"]
-    reports = map_parallel_ordered(
-        state["reports"],
-        lambda item: _analyze_report(item, match_date),
-    )
+    reports = [_analyze_report(item, match_date) for item in state["reports"]]
     return {"reports": reports}

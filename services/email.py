@@ -64,32 +64,22 @@ def _build_html(report_date: str, match_count: int) -> str:
         </div>
         """
 
+    files = "PDF" if match_count == 1 else "PDFs"
     return f"""
     <div style="font-family: sans-serif; color: #111827; max-width: 560px;">
       <h2 style="color: #059669; margin-bottom: 4px;">Shunya Scout</h2>
       <p style="color: #6b7280; font-size: 14px; margin-top: 0;">
-        Matchday digest for <strong>{report_date}</strong> · {match_count} fixture{"s" if match_count != 1 else ""}
+        Match reports for <strong>{report_date}</strong> · {match_count} fixture{"s" if match_count != 1 else ""}
       </p>
       {cards}
       <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">
-        Full matchday digest PDF attached. Individual match reports are in the app.
+        {match_count} match report {files} attached — one per fixture.
       </p>
     </div>
     """
 
 
-def _digest_attachment(report_date: str) -> Attachment | None:
-    pdf_bytes = reports_db.download_digest_bytes(report_date)
-    if not pdf_bytes:
-        return None
-    return {
-        "filename": f"shunya-scout-matchday-{report_date}.pdf",
-        "content": base64.b64encode(pdf_bytes).decode("utf-8"),
-        "content_type": "application/pdf",
-    }
-
-
-def _fallback_attachments(report_date: str, entries: list[dict]) -> list[Attachment]:
+def _match_attachments(report_date: str, entries: list[dict]) -> list[Attachment]:
     attachments: list[Attachment] = []
     for entry in entries:
         slug = entry["pdf_slug"]
@@ -115,7 +105,7 @@ def _email_subject(report_date: str, match_count: int) -> str:
         score = dashboard_field(dashboard, "predicted_score", default="")
         pick = f" — {score}" if score != "—" else ""
         return f"Shunya Scout — {report['team_a']} vs {report['team_b']}{pick}"
-    return f"Shunya Scout — Matchday digest ({match_count} fixtures) · {report_date}"
+    return f"Shunya Scout — {match_count} match reports · {report_date}"
 
 
 def send_daily_report_email(
@@ -133,8 +123,7 @@ def send_daily_report_email(
     )
 
     match_count = len(entries)
-    digest = _digest_attachment(report_date)
-    attachments: list[Attachment] = [digest] if digest else _fallback_attachments(report_date, entries)
+    attachments = _match_attachments(report_date, entries)
 
     if entries and not attachments:
         raise ValueError(

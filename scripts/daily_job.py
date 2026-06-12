@@ -13,7 +13,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 load_dotenv()
 
 from run_graph import load_report_entries, run_pipeline  # noqa: E402
-from services import reports_db  # noqa: E402
 from services.email import send_daily_report_email  # noqa: E402
 
 logging.basicConfig(
@@ -29,8 +28,6 @@ def main() -> None:
 
     result = run_pipeline(report_date, skip_existing=True)
     entries = load_report_entries(report_date)
-    if entries:
-        reports_db.build_and_save_matchday_digest(report_date)
 
     logger.info(
         "Pipeline finished: %d matches, %d generated, %d skipped, %d total reports",

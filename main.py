@@ -89,13 +89,10 @@ def _send_report_email(
 
 
 def _report_index(report_date: str, entries: list[dict]) -> dict:
-    payload = {
+    return {
         "date": report_date,
         "downloads": [_download_entry(report_date, entry) for entry in entries],
     }
-    if reports_db.download_digest_bytes(report_date):
-        payload["digest_url"] = f"/reports/{report_date}/matchday-digest.pdf"
-    return payload
 
 
 def _pipeline_response(result: dict, entries: list[dict], *, email: dict) -> dict:
@@ -185,8 +182,6 @@ def trigger_pipeline(
 
         report_date = result["date"]
         entries = load_report_entries(report_date)
-        if entries:
-            reports_db.build_and_save_matchday_digest(report_date)
         email = _send_report_email(report_date, entries)
         return _pipeline_response(result, entries, email=email)
     finally:
@@ -213,23 +208,6 @@ def get_report_index(report_date: str, user: dict = Depends(require_user)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     entries = load_report_entries(report_date)
     return _report_index(report_date, entries)
-
-
-@app.get("/reports/{report_date}/matchday-digest.pdf")
-def download_matchday_digest(report_date: str, user: dict = Depends(require_user)):
-    try:
-        parse_report_date(report_date)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    pdf_bytes = reports_db.download_digest_bytes(report_date)
-    if not pdf_bytes:
-        raise HTTPException(status_code=404, detail="Matchday digest not found")
-    filename = f"shunya-scout-matchday-{report_date}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 @app.get("/reports/{report_date}/{pdf_slug}.pdf")

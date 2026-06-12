@@ -8,6 +8,8 @@ from services.pdf_styles import (
     BADGE,
     BADGE_BORDER,
     BADGE_GK,
+    BADGE_PT,
+    BODY_PT,
     BORDER,
     FONT,
     INK,
@@ -95,7 +97,7 @@ def _draw_player_badge(
     pdf.set_line_width(0.15)
     pdf.rect(x, y, w, h, style="DF")
     pdf.set_xy(x, y + 1.8)
-    pdf.set_font(FONT, "B", 6.5)
+    pdf.set_font(FONT, "B", BADGE_PT)
     pdf.set_text_color(*INK)
     pdf.cell(w, h - 3, _truncate_name(name), align="C")
 
@@ -124,7 +126,7 @@ def _draw_team_pitch(
     pdf.rect(x, y + HEADER_H - 2.5, width, 2.5, style="F")
 
     pdf.set_xy(x + 3, y + 2.5)
-    pdf.set_font(FONT, "B", 8.5)
+    pdf.set_font(FONT, "B", BODY_PT)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(width * 0.62, 5, name, align="L")
 
@@ -133,7 +135,7 @@ def _draw_team_pitch(
     pdf.set_fill_color(*ACCENT)
     pdf.rect(pill_x, y + 2, pill_w, 5.5, style="F")
     pdf.set_xy(pill_x, y + 2.6)
-    pdf.set_font(FONT, "B", 6.5)
+    pdf.set_font(FONT, "B", BODY_PT)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(pill_w, 4.5, formation, align="C")
 
@@ -188,10 +190,10 @@ def draw_formation_diagram(pdf: FPDF, data: dict) -> None:
     unavailable = data.get("unavailable", "")
     if unavailable:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font(FONT, "", 10)
+        pdf.set_font(FONT, "", BODY_PT)
         pdf.set_text_color(*INK)
-        pdf.multi_cell(0, 5, f"Unavailable / Doubtful: {unavailable}")
+        pdf.multi_cell(0, BODY_PT * 0.5, f"Unavailable / Doubtful: {unavailable}")
         pdf.ln(3)
 
-    pdf.set_font(FONT, "", 10)
+    pdf.set_font(FONT, "", BODY_PT)
     pdf.set_text_color(*INK)

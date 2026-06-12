@@ -11,11 +11,11 @@ from services.pdf_dashboard import write_dashboard_panel
 from services.report_parse import extract_dashboard_block
 from services.pdf_styles import (
     ACCENT,
+    BODY_PT,
     BORDER,
     FONT,
+    HEADING_PT,
     INK,
-    INK_LIGHT,
-    INK_MUTED,
     REPORT_TAG_STYLES,
     style_report_html,
 )
@@ -36,13 +36,13 @@ class ScoutPDF(FPDF):
         self.add_font(FONT, "B", str(FONT_DIR / "NotoSans-Bold.ttf"))
         self.add_font(FONT, "I", str(FONT_DIR / "NotoSans-Italic.ttf"))
         self.add_font(FONT, "BI", str(FONT_DIR / "NotoSans-BoldItalic.ttf"))
-        self.set_font(FONT, size=10)
+        self.set_font(FONT, size=BODY_PT)
 
     def header(self) -> None:
         if self.page_no() == 1:
             return
-        self.set_font(FONT, "B", 7.5)
-        self.set_text_color(*INK_LIGHT)
+        self.set_font(FONT, "", BODY_PT)
+        self.set_text_color(*INK)
         self.set_y(8)
         self.cell(0, 4, self.match_title, align="R")
         self.set_draw_color(*BORDER)
@@ -54,8 +54,8 @@ class ScoutPDF(FPDF):
         self.set_draw_color(*BORDER)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
         self.ln(2)
-        self.set_font(FONT, "", 7.5)
-        self.set_text_color(*INK_LIGHT)
+        self.set_font(FONT, "", BODY_PT)
+        self.set_text_color(*INK)
         self.cell(0, 5, "FIFA World Cup 2026  |  Shunya Scout", align="L")
         self.set_x(self.l_margin)
         self.cell(0, 5, f"Page {self.page_no()}", align="R")
@@ -89,12 +89,14 @@ def _write_body_html(pdf: ScoutPDF, markdown_text: str) -> None:
         extensions=["tables", "fenced_code", "nl2br", "sane_lists"],
     )
     pdf.set_draw_color(*BORDER)
+    pdf.set_font(FONT, "", BODY_PT)
     pdf.set_text_color(*INK)
     pdf.write_html(
         style_report_html(html),
         tag_styles=REPORT_TAG_STYLES,
         font_family=FONT,
         table_line_separators=True,
+        li_prefix_color=INK,
     )
     pdf.set_text_color(*INK)
     pdf.ln(1)
@@ -117,24 +119,22 @@ def _write_cover(
     pdf.set_x(pdf.l_margin)
 
     # Kicker
-    pdf.set_font(FONT, "B", 7.5)
-    pdf.set_text_color(*ACCENT)
-    pdf.cell(0, 4, "FIFA WORLD CUP 2026  /  SHUNYA SCOUT", ln=True)
+    pdf.set_font(FONT, "B", BODY_PT)
+    pdf.set_text_color(*INK)
+    pdf.cell(0, 5, "FIFA WORLD CUP 2026  /  SHUNYA SCOUT", ln=True)
 
     pdf.ln(3)
     pdf.set_x(pdf.l_margin)
-    pdf.set_font(FONT, "B", 22)
+    pdf.set_font(FONT, "B", HEADING_PT)
     pdf.set_text_color(*INK)
-    pdf.multi_cell(0, 11, f"{team_a}  vs  {team_b}")
+    pdf.multi_cell(0, 6, f"{team_a}  vs  {team_b}")
 
     pdf.ln(1)
     pdf.set_x(pdf.l_margin)
-    pdf.set_font(FONT, "", 9.5)
-    pdf.set_text_color(*INK_MUTED)
+    pdf.set_font(FONT, "", BODY_PT)
+    pdf.set_text_color(*INK)
     pdf.cell(0, 5, f"Match date: {match_date}", ln=True)
     pdf.set_x(pdf.l_margin)
-    pdf.set_font(FONT, "", 8.5)
-    pdf.set_text_color(*INK_LIGHT)
     pdf.cell(0, 5, f"Generated {generated_at}", ln=True)
 
     pdf.ln(5)
@@ -161,9 +161,9 @@ def _write_section_heading(pdf: ScoutPDF, title: str) -> None:
     pdf.rect(pdf.l_margin, y, 1.2, 7, style="F")
 
     pdf.set_x(pdf.l_margin + 4)
-    pdf.set_font(FONT, "B", 12)
+    pdf.set_font(FONT, "B", HEADING_PT)
     pdf.set_text_color(*INK)
-    pdf.cell(0, 7, title, ln=True)
+    pdf.cell(0, 6, title, ln=True)
 
     y2 = pdf.get_y()
     pdf.set_draw_color(*BORDER)

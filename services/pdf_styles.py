@@ -19,25 +19,48 @@ BADGE_GK = (254, 249, 195)
 BADGE_BORDER = (209, 213, 219)
 
 FONT = "NotoSans"
+
+# Three text tiers for report body — size and color only, weight varies by role.
+BODY_PT = 10
+SUBHEADING_PT = 10
+HEADING_PT = 11
 BODY_LINE_HEIGHT = 1.38
+BADGE_PT = 9  # formation player labels only (space-constrained)
 
 
 def _rgb_hex(rgb: tuple[int, int, int]) -> str:
     return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
+def _body(**kwargs) -> TextStyle:
+    return TextStyle(color=INK, font_size_pt=BODY_PT, **kwargs)
+
+
+def _subheading(**kwargs) -> TextStyle:
+    return TextStyle(color=INK, font_size_pt=SUBHEADING_PT, font_style="B", **kwargs)
+
+
+def _heading(**kwargs) -> TextStyle:
+    return TextStyle(color=INK, font_size_pt=HEADING_PT, font_style="B", **kwargs)
+
+
 # fpdf2 scales heading b_margin by font size (b_margin * hsize), so keep values small.
 REPORT_TAG_STYLES = {
-    "p": TextStyle(color=INK, font_size_pt=10, t_margin=0.3, b_margin=1.0),
-    "li": TextStyle(color=INK, font_size_pt=10, l_margin=3, t_margin=0.6, b_margin=0.6),
-    "ul": TextStyle(t_margin=0.6, b_margin=0.5),
-    "ol": TextStyle(t_margin=0.6, b_margin=0.5),
-    "h2": TextStyle(
-        color=INK, font_size_pt=11, font_style="B", t_margin=2, b_margin=0.25
-    ),
-    "h3": TextStyle(
-        color=INK_MUTED, font_size_pt=10, font_style="B", t_margin=1.5, b_margin=0.2
-    ),
+    "p": _body(t_margin=0.3, b_margin=1.0),
+    "li": _body(l_margin=3, t_margin=0.6, b_margin=0.6),
+    "ul": _body(t_margin=0.6, b_margin=0.5),
+    "ol": _body(t_margin=0.6, b_margin=0.5),
+    "blockquote": _body(t_margin=1.0, b_margin=1.0),
+    "dd": _body(l_margin=4),
+    "dt": _subheading(t_margin=0.8, b_margin=0.3),
+    "h1": _heading(t_margin=2, b_margin=0.4),
+    "h2": _heading(t_margin=2, b_margin=0.4),
+    "h3": _subheading(t_margin=1.2, b_margin=0.3),
+    "h4": _subheading(t_margin=1.0, b_margin=0.3),
+    "h5": _subheading(t_margin=0.8, b_margin=0.3),
+    "h6": _subheading(t_margin=0.8, b_margin=0.3),
+    "pre": _body(t_margin=0.8, b_margin=0.8, font_family=FONT),
+    "code": FontFace(family=FONT, color=INK),
     "strong": FontFace(emphasis=TextEmphasis.B),
     "b": FontFace(emphasis=TextEmphasis.B),
     "em": FontFace(emphasis=TextEmphasis.I),
@@ -49,9 +72,10 @@ def style_report_html(html: str) -> str:
     lh = BODY_LINE_HEIGHT
     html = re.sub(r"<p>", f'<p line-height="{lh}">', html)
     html = re.sub(r"<li>", f'<li line-height="{lh}">', html)
+    # Reset to body size after headings so tables inherit BODY_PT, not heading size.
     html = re.sub(
-        r"(</h[23]>)\s*<table",
-        r"\1<br/><table",
+        r"(</h[1-6]>)\s*<table",
+        rf'\1<p line-height="{lh}"> </p><table',
         html,
         flags=re.IGNORECASE,
     )

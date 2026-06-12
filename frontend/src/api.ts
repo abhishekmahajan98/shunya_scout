@@ -24,7 +24,6 @@ export interface DownloadEntry {
 export interface DownloadIndex {
   date: string;
   downloads: DownloadEntry[];
-  digest_url?: string;
 }
 
 export interface RunResult extends DownloadIndex {
