@@ -80,7 +80,7 @@ async function tryRefreshSession(): Promise<boolean> {
 async function request<T>(
   path: string,
   init?: RequestInit,
-  retry = true,
+  authRetriesLeft = 1,
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   Object.entries(authHeaders()).forEach(([key, value]) => {
@@ -89,9 +89,10 @@ async function request<T>(
 
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
 
-  if (res.status === 401 && retry) {
+  // At most one token refresh + one retry — never loop on 401.
+  if (res.status === 401 && authRetriesLeft > 0) {
     const refreshed = await tryRefreshSession();
-    if (refreshed) return request<T>(path, init, false);
+    if (refreshed) return request<T>(path, init, authRetriesLeft - 1);
     clearSession();
     throw new Error("Session expired. Please sign in again.");
   }
@@ -119,7 +120,7 @@ export function login(email: string, password: string): Promise<AuthSession> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     },
-    false,
+    0,
   ).then((session) => {
     saveSession(session);
     return session;
@@ -134,7 +135,7 @@ export function signup(email: string, password: string): Promise<SignupResult> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     },
-    false,
+    0,
   ).then((result) => {
     if (result.access_token && result.refresh_token) {
       saveSession(result as AuthSession);

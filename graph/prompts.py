@@ -2,9 +2,32 @@ SCOUT_SYSTEM = (
     "You are an elite football scout and tactical analyst preparing intelligence "
     "for a World Cup betting desk. Search the web exhaustively. Be specific: "
     "name players, cite dates, quote stats, and note sources. Today's date "
-    "is {match_date}. The tournament is FIFA World Cup 2026. If data is "
-    "uncertain, say so — never invent facts."
+    "is {match_date}. The tournament is FIFA World Cup 2026. For each national "
+    "team, always analyze the last 10 completed games across all competitions "
+    "(qualifiers, friendlies, Nations League, World Cup) — not just this tournament. "
+    "If data is uncertain, say so — never invent facts."
 )
+
+SCOUT_RECENT_FORM = """\
+Research the last 10 completed national-team matches for {team_a} and {team_b}.
+
+Today's date: {match_date}. Use ANY competition — not limited to World Cup 2026: \
+group/knockout games, qualifiers, friendlies, Nations League, continental qualifiers, etc.
+
+For EACH team, list all 10 games from oldest to newest:
+- Date, competition, opponent, venue (H/A/N), score, result (W/D/L)
+- Formation used and full starting XI (all 11 names when available)
+- Goal scorers, clean sheet (Y/N), cards if notable
+- Rotation or tactical change vs the previous match
+
+Then summarize per team:
+- Record over last 10 (W-D-L, goals for/against)
+- Most-used formation(s) and consistent starters vs rotation players
+- Trend: improving, declining, or stable
+- Any home/away or opponent-strength pattern worth noting
+
+This is the primary form sample for lineup and tactical analysis — do not limit to \
+this tournament only."""
 
 SCOUT_LINEUPS = """\
 Research predicted lineups for {team_a} vs {team_b} at the FIFA World Cup 2026.
@@ -12,14 +35,28 @@ Research predicted lineups for {team_a} vs {team_b} at the FIFA World Cup 2026.
 Today's date: {match_date}.
 
 Cover in depth:
-1. Full confirmed/provisional World Cup 2026 squads for both teams.
-2. Predicted starting XIs (formation + 1–11) based on the most recent competitive matches.
-3. Actual starting lineups from each team's last 3 games in this tournament or qualifiers — note any changes.
+1. Full confirmed/provisional World Cup 2026 squads for both teams (name every player).
+2. Predicted starting XIs (formation + all 11 names) based on each team's last 10 national-team \
+games across all competitions (see Recent Form research).
+3. Starting XI patterns from those last 10 games — who starts regularly, who rotates, \
+set-piece takers, settled back line.
 4. Injuries, suspensions, fitness doubts, and players returning from knocks.
 5. Likely bench impact subs and rotation risk given the match date and group/knockout context.
 6. Goalkeeper situation and defensive partnership stability.
 
-Cite sources and dates for every lineup claim."""
+Cite sources and dates for every lineup claim.
+
+End your response with explicit predicted XIs in this exact format (use real player names only):
+
+**{team_a} predicted XI (formation):**
+1. [Full Name] — GK
+2. [Full Name] — RB
+... (all 11 players numbered)
+
+**{team_b} predicted XI (formation):**
+1. [Full Name] — GK
+2. [Full Name] — RB
+... (all 11 players numbered)"""
 
 SCOUT_H2H = """\
 Research head-to-head history for {team_a} vs {team_b}.
@@ -38,8 +75,8 @@ Research individual player form for {team_a} vs {team_b} at World Cup 2026.
 
 Today's date: {match_date}.
 
-For EACH team, provide:
-1. **In-form players** (last 3–5 games): goals, assists, key stats, standout performances.
+For EACH team, provide (grounded in the last 10 national-team games, any competition):
+1. **In-form players**: goals, assists, key stats, standout performances across the last 10.
 2. **Out-of-form / struggling players**: poor recent output, errors, minutes concerns.
 3. **Player to Watch** — one per team: why they are the decisive factor tactically today.
 4. xG/xA or comparable advanced metrics where available.
@@ -52,8 +89,8 @@ Research tactical profiles for {team_a} vs {team_b} at World Cup 2026.
 
 Today's date: {match_date}.
 
-Cover for BOTH teams:
-1. Primary formation(s) and in-possession shape.
+Cover for BOTH teams (ground patterns in the last 10 national-team games, any competition):
+1. Primary formation(s) and in-possession shape — note how often each was used in the last 10.
 2. Build-up patterns: how they progress from back to final third.
 3. Pressing system: PPDA, high/mid/low block, trigger points.
 4. Defensive vulnerabilities: spaces exploited, set-piece weakness, transition exposure.
@@ -68,7 +105,7 @@ Today's date: {match_date}.
 
 Cover:
 1. Group/knockout stage situation: points, goal difference, what each team needs.
-2. Recent team form: last 5 results with scores for both sides.
+2. How each team's last 10 games (any competition) inform expectations for this match.
 3. Venue, kick-off time, weather/pitch conditions if relevant.
 4. Travel, rest days, and fixture congestion.
 5. Manager quotes or press conference signals on approach.
@@ -91,6 +128,7 @@ Cover:
 Cite bookmaker consensus or odds aggregators."""
 
 RESEARCH_SECTIONS: list[tuple[str, str]] = [
+    ("Recent Form — Last 10 Games", SCOUT_RECENT_FORM),
     ("Predicted Lineups & Squads", SCOUT_LINEUPS),
     ("Head-to-Head", SCOUT_H2H),
     ("Player Form & Players to Watch", SCOUT_PLAYER_FORM),
@@ -113,6 +151,8 @@ ANALYST_SYSTEM = (
     "header separator row; leave a blank line before every header and table; "
     "no bold or italic inside table cells; no HTML tags; no code fences around "
     "the full report except the required ```dashboard and ```formation blocks. "
+    "In formation blocks, every slot must be a real player name from the research "
+    "(surname or full name) — NEVER position codes like LW, ST, CM, CB, or GK. "
     "Name players and cite specific stats from the research. Do not invent "
     "data not present in the research. Where the research is thin, flag the gap "
     "explicitly."
@@ -158,11 +198,30 @@ Output ONLY a ```dashboard JSON block in this section (no other text). Use real 
 - Stage, standings, what each team needs
 - Venue, conditions, rest/rotation factors
 
+## Recent Form (Last 10)
+
+Summarize each team's last 10 national-team games (any competition — not just this tournament).
+
+### {team_a}
+- Record (W-D-L), goals for/against, form trend
+- Most-used formation and lineup stability
+- What the last 10 games imply for today
+
+### {team_b}
+- Record (W-D-L), goals for/against, form trend
+- Most-used formation and lineup stability
+- What the last 10 games imply for today
+
 ## Predicted Lineups
 
-Output a ```formation JSON block (and nothing else in this section except that block). \
-Lines run attack-to-goal (forwards first, goalkeeper last). Each line is left-to-right \
-on the pitch. Use real predicted player names only.
+Output a ```formation JSON block (and nothing else in this section except that block).
+
+Formation block rules:
+- lines run attack-to-goal (forwards first, goalkeeper last); each line is left-to-right on the pitch
+- every array entry must be a REAL player surname or full name from the research — never a position label
+- each team must have exactly 11 named players total across all lines
+- use the numbered predicted XIs and last-10 starting XI patterns from research as your source of truth
+- if a starter is doubtful, still name the most likely player and note doubt in unavailable
 
 ```formation
 {{
@@ -170,21 +229,21 @@ on the pitch. Use real predicted player names only.
     "name": "{team_a}",
     "formation": "4-3-3",
     "lines": [
-      ["LW", "ST", "RW"],
-      ["CM", "CM", "CM"],
-      ["LB", "CB", "CB", "RB"],
-      ["GK"]
+      ["Gomez", "Alvarez", "Di Maria"],
+      ["Mac Allister", "Fernandez", "De Paul"],
+      ["Tagliafico", "Otamendi", "Romero", "Molina"],
+      ["Martinez"]
     ]
   }},
   "team_b": {{
     "name": "{team_b}",
     "formation": "4-2-3-1",
     "lines": [
-      ["ST"],
-      ["LW", "CAM", "RW"],
-      ["CDM", "CDM"],
-      ["LB", "CB", "CB", "RB"],
-      ["GK"]
+      ["Mbappe"],
+      ["Rabiot", "Griezmann", "Dembele"],
+      ["Camavinga", "Tchouameni"],
+      ["Hernandez", "Upamecano", "Saliba", "Kounde"],
+      ["Maignan"]
     ]
   }},
   "unavailable": "List injuries, suspensions, and doubts for both teams"
@@ -241,4 +300,33 @@ xG, chance quality, possession trends, defensive metrics — whatever the resear
 - **Most likely decisive factor**
 - **Contrarian risk** — what could make the consensus wrong
 - **Risk factors** that could flip the script
+"""
+
+LINEUP_FORMATION_SYSTEM = (
+    "You are a football lineup specialist. Output ONLY a single ```formation JSON code "
+    "block. Every player entry must be a real name from the research — never position "
+    "abbreviations (LW, ST, CM, GK, etc.). Each team needs exactly 11 named players."
+)
+
+LINEUP_FORMATION_TEMPLATE = """\
+Build the predicted starting lineups for **{team_a} vs {team_b}** (World Cup 2026).
+
+Use the scouting research below — especially each team's last 10 games and numbered \
+predicted XI lists. Pick starters who appear most often in recent XIs. Name real players \
+only — if uncertain between two players, pick the most likely starter and note the doubt \
+in unavailable.
+
+Output ONLY this JSON inside a ```formation block:
+
+```formation
+{{
+  "team_a": {{ "name": "{team_a}", "formation": "...", "lines": [[...], ..., ["GK surname"]] }},
+  "team_b": {{ "name": "{team_b}", "formation": "...", "lines": [[...], ..., ["GK surname"]] }},
+  "unavailable": "injuries, suspensions, doubts"
+}}
+```
+
+--- RESEARCH ---
+{raw_scout_data}
+--- END RESEARCH ---
 """

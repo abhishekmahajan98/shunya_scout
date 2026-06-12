@@ -1,8 +1,19 @@
+import json
+import logging
 import os
 
 import google.generativeai as genai
 
-from graph.prompts import ANALYST_REPORT_TEMPLATE, ANALYST_SYSTEM
+from services.formation import FORMATION_BLOCK_RE
+from services.lineup import (
+    extract_formation_data,
+    formation_issues,
+    formation_needs_repair,
+    replace_formation_block,
+)
+from utils.limits import MAX_LINEUP_REPAIR_ATTEMPTS
+
+logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-3.5-flash"
 
@@ -14,12 +25,97 @@ def _configure() -> None:
     genai.configure(api_key=api_key)
 
 
+def _extract_formation_json(text: str) -> dict | None:
+    match = FORMATION_BLOCK_RE.search(text)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+
+
+def generate_lineup_formation(
+    team_a: str,
+    team_b: str,
+    raw_scout_data: str,
+) -> dict | None:
+    from graph.prompts import LINEUP_FORMATION_SYSTEM, LINEUP_FORMATION_TEMPLATE
+
+    _configure()
+    user_prompt = LINEUP_FORMATION_TEMPLATE.format(
+        team_a=team_a,
+        team_b=team_b,
+        raw_scout_data=raw_scout_data,
+    )
+    gemini = genai.GenerativeModel(
+        model_name=GEMINI_MODEL,
+        system_instruction=LINEUP_FORMATION_SYSTEM,
+    )
+    response = gemini.generate_content(user_prompt)
+    text = response.text or ""
+    data = _extract_formation_json(text)
+    if data and not formation_issues(data):
+        return data
+    if data:
+        logger.warning(
+            "Lineup repair still has issues for %s vs %s: %s",
+            team_a,
+            team_b,
+            formation_issues(data),
+        )
+    return data
+
+
+def ensure_valid_formation(
+    markdown_text: str,
+    *,
+    team_a: str,
+    team_b: str,
+    raw_scout_data: str,
+) -> str:
+    if not formation_needs_repair(markdown_text):
+        return markdown_text
+
+    existing = extract_formation_data(markdown_text)
+    if existing:
+        logger.warning(
+            "Repairing lineup for %s vs %s (1 attempt max): %s",
+            team_a,
+            team_b,
+            formation_issues(existing),
+        )
+    else:
+        logger.warning(
+            "Missing formation block for %s vs %s — generating (1 attempt max)",
+            team_a,
+            team_b,
+        )
+
+    repaired = generate_lineup_formation(team_a, team_b, raw_scout_data)
+    if not repaired:
+        return markdown_text
+
+    remaining = formation_issues(repaired)
+    if remaining:
+        logger.warning(
+            "Lineup repair incomplete for %s vs %s (not retrying): %s",
+            team_a,
+            team_b,
+            remaining,
+        )
+
+    return replace_formation_block(markdown_text, repaired)
+
+
 def analyze_match(
     team_a: str,
     team_b: str,
     raw_scout_data: str,
     match_date: str,
 ) -> str:
+    from graph.prompts import ANALYST_REPORT_TEMPLATE, ANALYST_SYSTEM
+
     _configure()
     user_prompt = ANALYST_REPORT_TEMPLATE.format(
         team_a=team_a,
@@ -32,4 +128,10 @@ def analyze_match(
         system_instruction=ANALYST_SYSTEM,
     )
     response = gemini.generate_content(user_prompt)
-    return response.text or ""
+    markdown = response.text or ""
+    return ensure_valid_formation(
+        markdown,
+        team_a=team_a,
+        team_b=team_b,
+        raw_scout_data=raw_scout_data,
+    )

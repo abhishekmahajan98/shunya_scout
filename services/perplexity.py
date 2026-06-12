@@ -9,7 +9,8 @@ def _get_client() -> OpenAI:
     api_key = os.environ.get("PERPLEXITY_API_KEY")
     if not api_key:
         raise ValueError("PERPLEXITY_API_KEY environment variable is not set")
-    return OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+    # max_retries=1 → at most 2 HTTP attempts per call (no SDK retry storms).
+    return OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", max_retries=1)
 
 
 def _extract_json(text: str) -> str:

@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from datetime import date
 
 from dotenv import load_dotenv
@@ -18,6 +19,8 @@ from utils.dates import parse_report_date
 from utils.slug import match_slug
 
 logger = logging.getLogger(__name__)
+
+_pipeline_lock = threading.Lock()
 
 load_dotenv()
 
@@ -166,20 +169,28 @@ def trigger_pipeline(
     body: RunRequest | None = None,
     user: dict = Depends(require_user),
 ):
-    target_date = body.date if body else None
+    if not _pipeline_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="Pipeline already running. Wait for it to finish before starting again.",
+        )
     try:
-        result = run_pipeline(target_date, skip_existing=False)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        target_date = body.date if body else None
+        try:
+            result = run_pipeline(target_date, skip_existing=False)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    report_date = result["date"]
-    entries = load_report_entries(report_date)
-    if entries:
-        reports_db.build_and_save_matchday_digest(report_date)
-    email = _send_report_email(report_date, entries)
-    return _pipeline_response(result, entries, email=email)
+        report_date = result["date"]
+        entries = load_report_entries(report_date)
+        if entries:
+            reports_db.build_and_save_matchday_digest(report_date)
+        email = _send_report_email(report_date, entries)
+        return _pipeline_response(result, entries, email=email)
+    finally:
+        _pipeline_lock.release()
 
 
 @app.get("/reports")

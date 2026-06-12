@@ -7,6 +7,7 @@ from graph.nodes import analyst_node, scheduler_node, scout_node
 from models.state import GraphState, MatchReport, coerce_report
 from services import reports_db
 from utils.dates import require_mutable_report_date
+from utils.limits import estimate_api_calls, max_matches_per_run
 from utils.slug import match_slug
 
 load_dotenv()
@@ -36,6 +37,16 @@ def run_pipeline(
     state.update(scheduler_node(state))
     all_matches = state["matches"]
 
+    cap = max_matches_per_run()
+    if len(all_matches) > cap:
+        logger.warning(
+            "Scheduler returned %d matches for %s; capping at %d (set MAX_MATCHES_PER_RUN)",
+            len(all_matches),
+            report_date,
+            cap,
+        )
+        all_matches = all_matches[:cap]
+
     existing_slugs = reports_db.get_existing_slugs(report_date)
 
     if skip_existing:
@@ -51,11 +62,15 @@ def run_pipeline(
     generated_reports: list[MatchReport] = []
 
     if matches_to_run:
+        budget = estimate_api_calls(len(matches_to_run))
         logger.info(
-            "Generating %d report(s) for %s (%d skipped)",
+            "Generating %d report(s) for %s (%d skipped). "
+            "API budget (max): %d Perplexity + %d Gemini",
             len(matches_to_run),
             report_date,
             skipped_count,
+            budget["perplexity_max"],
+            budget["gemini_max"],
         )
         run_state: GraphState = {
             "date": report_date,
