@@ -15,6 +15,7 @@ from services import reports_db
 from services.auth import AuthError, refresh_session, sign_in, sign_out, sign_up
 from services.email import send_daily_report_email
 from services.frontend_static import frontend_dist_exists, mount_frontend
+from services.match_facts import list_upcoming_fixtures
 from utils.dates import parse_report_date
 from utils.slug import match_slug
 
@@ -42,7 +43,7 @@ app.add_middleware(
 
 
 class RunRequest(BaseModel):
-    date: str | None = None
+    fixture_ids: list[int]
 
 
 class AuthRequest(BaseModel):
@@ -95,12 +96,58 @@ def _report_index(report_date: str, entries: list[dict]) -> dict:
     }
 
 
-def _pipeline_response(result: dict, entries: list[dict], *, email: dict) -> dict:
-    index = _report_index(result["date"], entries)
+def _entries_for_reports(reports: list, *, fallback_date: str) -> list[dict]:
+    entries: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for report in reports:
+        match = report.match
+        report_date = match.report_date or fallback_date
+        slug = match_slug(match.team_a, match.team_b)
+        key = (report_date, slug)
+        if key in seen:
+            continue
+        seen.add(key)
+        for entry in load_report_entries(report_date):
+            if entry["pdf_slug"] == slug:
+                entry = {**entry, "report_date": report_date}
+                entries.append(entry)
+                break
+    return entries
+
+
+def _pipeline_response(
+    result: dict,
+    generated_entries: list[dict],
+    *,
+    email: dict,
+) -> dict:
+    affected_dates = result.get("dates") or (
+        [result["date"]] if result.get("date") else []
+    )
+    downloads: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for report_date in affected_dates:
+        for entry in load_report_entries(report_date):
+            key = (report_date, entry["pdf_slug"])
+            if key in seen:
+                continue
+            seen.add(key)
+            downloads.append(_download_entry(report_date, entry))
+
+    generated_downloads: list[dict] = []
+    for entry in generated_entries:
+        report_date = entry.get("report_date")
+        if not report_date:
+            continue
+        generated_downloads.append(_download_entry(report_date, entry))
+
     return {
-        **index,
+        "date": result.get("date"),
+        "dates": affected_dates,
+        "downloads": downloads,
+        "generated_downloads": generated_downloads,
         "match_count": len(result.get("matches", [])),
-        "report_count": len(index["downloads"]),
+        "report_count": len(downloads),
         "generated_count": result.get("generated_count", 0),
         "skipped_count": result.get("skipped_count", 0),
         **email,
@@ -161,9 +208,19 @@ def logout(
     return {"ok": True}
 
 
+@app.get("/fixtures/upcoming")
+def upcoming_fixtures(user: dict = Depends(require_user)):
+    try:
+        return list_upcoming_fixtures(days=2)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/run")
 def trigger_pipeline(
-    body: RunRequest | None = None,
+    body: RunRequest,
     user: dict = Depends(require_user),
 ):
     if not _pipeline_lock.acquire(blocking=False):
@@ -172,18 +229,28 @@ def trigger_pipeline(
             detail="Pipeline already running. Wait for it to finish before starting again.",
         )
     try:
-        target_date = body.date if body else None
+        if not body.fixture_ids:
+            raise HTTPException(status_code=400, detail="Select at least one fixture.")
+
         try:
-            result = run_pipeline(target_date, skip_existing=False)
+            result = run_pipeline(body.fixture_ids, skip_existing=False)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        report_date = result["date"]
-        entries = load_report_entries(report_date)
-        email = _send_report_email(report_date, entries)
-        return _pipeline_response(result, entries, email=email)
+        fallback_date = result.get("date") or date.today().isoformat()
+        generated_entries = _entries_for_reports(
+            result.get("reports", []),
+            fallback_date=fallback_date,
+        )
+        email_date = (
+            result["dates"][0]
+            if result.get("dates")
+            else fallback_date
+        )
+        email = _send_report_email(email_date, generated_entries)
+        return _pipeline_response(result, generated_entries, email=email)
     finally:
         _pipeline_lock.release()
 

@@ -11,8 +11,6 @@ from services.formation import (
     estimate_formation_block_height,
     extract_formation_blocks,
 )
-from services.pdf_dashboard import write_dashboard_panel
-from services.report_parse import extract_dashboard_block
 from services.pdf_styles import (
     ACCENT,
     BODY_PT,
@@ -111,18 +109,15 @@ def _write_cover(
     team_a: str,
     team_b: str,
     match_date: str,
-    dashboard: dict | None = None,
 ) -> None:
     generated_at = datetime.now().strftime("%B %d, %Y at %H:%M UTC")
 
-    # Accent bar
     pdf.set_fill_color(*ACCENT)
     pdf.rect(0, 0, pdf.w, 3.5, style="F")
 
     pdf.set_y(16)
     pdf.set_x(pdf.l_margin)
 
-    # Kicker
     pdf.set_font(FONT, "B", BODY_PT)
     pdf.set_text_color(*INK)
     pdf.cell(0, 5, "FIFA WORLD CUP 2026  /  SHUNYA SCOUT", ln=True)
@@ -140,6 +135,9 @@ def _write_cover(
     pdf.cell(0, 5, f"Match date: {match_date}", ln=True)
     pdf.set_x(pdf.l_margin)
     pdf.cell(0, 5, f"Generated {generated_at}", ln=True)
+    pdf.set_x(pdf.l_margin)
+    pdf.set_font(FONT, "I", BODY_PT)
+    pdf.cell(0, 5, "Morning pre-match report", ln=True)
 
     pdf.ln(5)
     y = pdf.get_y()
@@ -150,17 +148,11 @@ def _write_cover(
     pdf.ln(6)
     pdf.set_text_color(*INK)
 
-    if dashboard:
-        write_dashboard_panel(pdf, dashboard)
-    else:
-        pdf.ln(2)
-
 
 def _write_section_heading(pdf: ScoutPDF, title: str) -> None:
     pdf.set_x(pdf.l_margin)
     y = pdf.get_y()
 
-    # Left accent bar
     pdf.set_fill_color(*ACCENT)
     pdf.rect(pdf.l_margin, y, 1.2, 7, style="F")
 
@@ -198,7 +190,6 @@ def generate_match_pdf(
     md_path.write_text(markdown_text, encoding="utf-8")
 
     body = _normalize_unicode(_strip_leading_h1(markdown_text))
-    body, dashboard = extract_dashboard_block(body)
     body, formations = extract_formation_blocks(body)
     before_lineups, after_lineups = _split_at_lineups(body)
 
@@ -206,7 +197,7 @@ def generate_match_pdf(
     pdf.set_auto_page_break(auto=True, margin=22)
     pdf.set_top_margin(20)
     pdf.add_page()
-    _write_cover(pdf, team_a, team_b, match_date, dashboard)
+    _write_cover(pdf, team_a, team_b, match_date)
 
     if before_lineups.strip():
         _write_body_html(pdf, before_lineups)

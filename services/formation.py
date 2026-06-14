@@ -85,6 +85,8 @@ def estimate_formation_block_height(data: dict) -> float:
     _, total_h = _layout_dimensions(data["team_a"], data["team_b"])
     heading_h = 12.0
     extra = 6.0
+    if data.get("lineup_confidence"):
+        extra += 8.0
     unavailable = data.get("unavailable", "")
     if unavailable:
         extra += 10.0 + max(0, len(unavailable) // 90) * 5.0
@@ -223,6 +225,13 @@ def _draw_team_pitch(
 
 
 def draw_formation_diagram(pdf: FPDF, data: dict) -> None:
+    confidence = data.get("lineup_confidence", "")
+    if confidence:
+        pdf.set_font(FONT, "I", BODY_PT)
+        pdf.set_text_color(*INK)
+        pdf.cell(0, 5, confidence, ln=True)
+        pdf.ln(2)
+
     page_width = pdf.w - pdf.l_margin - pdf.r_margin
     gap = 6
     half = (page_width - gap) / 2

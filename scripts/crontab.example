@@ -1,7 +1,0 @@
-# Shunya Scout — daily reports at 9:00 AM US Eastern
-# Install: crontab -e, then paste the line below (update the path).
-#
-# Replace /Users/abhishekmahajan/scout with your project directory.
-
-CRON_TZ=America/New_York
-0 9 * * * cd /Users/abhishekmahajan/scout && .venv/bin/python scripts/daily_job.py >> data/cron.log 2>&1

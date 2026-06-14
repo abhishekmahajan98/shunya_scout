@@ -1,12 +1,13 @@
 import base64
 import logging
 import os
+import re
 
 import resend
 from resend.emails._attachment import Attachment
 
 from services import reports_db
-from services.report_parse import dashboard_field, extract_dashboard_block
+from services.report_parse import extract_executive_summary, extract_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,13 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _snippet(text: str, *, limit: int = 220) -> str:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 3].rstrip() + "..."
+
+
 def _match_cards_html(report_date: str) -> str:
     reports = reports_db.get_markdown_reports_for_date(report_date)
     if not reports:
@@ -25,17 +33,10 @@ def _match_cards_html(report_date: str) -> str:
 
     cards: list[str] = []
     for report in reports:
-        _, dashboard = extract_dashboard_block(report["markdown"])
         team_a = report["team_a"]
         team_b = report["team_b"]
-        score = dashboard_field(dashboard, "predicted_score")
-        confidence = dashboard_field(dashboard, "confidence")
-        best_bet = dashboard_field(dashboard, "best_bet")
-        story = dashboard_field(dashboard, "tactical_story", default="")
-        kickoff = dashboard_field(dashboard, "kickoff", default="")
-
-        meta_parts = [part for part in (kickoff, f"{confidence} confidence") if part != "—"]
-        meta = " · ".join(meta_parts)
+        summary = _snippet(extract_executive_summary(report["markdown"]))
+        verdict = _snippet(extract_verdict(report["markdown"]), limit=160)
 
         cards.append(
             f"""
@@ -43,11 +44,8 @@ def _match_cards_html(report_date: str) -> str:
               <div style="font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 4px;">
                 {team_a} vs {team_b}
               </div>
-              <div style="font-size: 13px; color: #059669; font-weight: 600; margin-bottom: 6px;">
-                Pick {score} · {best_bet}
-              </div>
-              <div style="font-size: 12px; color: #6b7280; margin-bottom: 6px;">{meta}</div>
-              <div style="font-size: 13px; color: #374151; line-height: 1.5;">{story}</div>
+              <div style="font-size: 13px; color: #374151; line-height: 1.5; margin-bottom: 6px;">{summary}</div>
+              <div style="font-size: 12px; color: #059669; font-weight: 600;">{verdict}</div>
             </div>
             """
         )
@@ -69,7 +67,7 @@ def _build_html(report_date: str, match_count: int) -> str:
     <div style="font-family: sans-serif; color: #111827; max-width: 560px;">
       <h2 style="color: #059669; margin-bottom: 4px;">Shunya Scout</h2>
       <p style="color: #6b7280; font-size: 14px; margin-top: 0;">
-        Match reports for <strong>{report_date}</strong> · {match_count} fixture{"s" if match_count != 1 else ""}
+        Morning match reports for <strong>{report_date}</strong> · {match_count} fixture{"s" if match_count != 1 else ""}
       </p>
       {cards}
       <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">
@@ -101,11 +99,8 @@ def _email_subject(report_date: str, match_count: int) -> str:
     reports = reports_db.get_markdown_reports_for_date(report_date)
     if len(reports) == 1:
         report = reports[0]
-        _, dashboard = extract_dashboard_block(report["markdown"])
-        score = dashboard_field(dashboard, "predicted_score", default="")
-        pick = f" — {score}" if score != "—" else ""
-        return f"Shunya Scout — {report['team_a']} vs {report['team_b']}{pick}"
-    return f"Shunya Scout — {match_count} match reports · {report_date}"
+        return f"Shunya Scout — {report['team_a']} vs {report['team_b']} · {report_date}"
+    return f"Shunya Scout — {match_count} morning reports · {report_date}"
 
 
 def send_daily_report_email(

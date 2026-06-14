@@ -95,6 +95,37 @@ def get_reports_for_date(report_date: str) -> list[dict]:
     return entries
 
 
+def delete_report(report_date: str, pdf_slug: str) -> bool:
+    client = get_client()
+    rows = (
+        client.table(TABLE)
+        .select("storage_path")
+        .eq("report_date", report_date)
+        .eq("pdf_slug", pdf_slug)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        return False
+
+    bucket = storage_bucket()
+    paths = [
+        row.get("storage_path") or storage_path_for(report_date, pdf_slug)
+        for row in rows
+    ]
+    try:
+        client.storage.from_(bucket).remove(paths)
+    except Exception:
+        logger.exception("Failed to remove storage for %s/%s", report_date, pdf_slug)
+
+    client.table(TABLE).delete().eq("report_date", report_date).eq(
+        "pdf_slug", pdf_slug
+    ).execute()
+    logger.info("Deleted report %s/%s", report_date, pdf_slug)
+    return True
+
+
 def clear_reports_for_date(report_date: str) -> int:
     client = get_client()
     rows = (

@@ -1,39 +1,29 @@
 import logging
 
-from models.state import GraphState, Match, MatchReport, coerce_report, normalize_matches
+from models.state import GraphState, Match, MatchReport, coerce_report
 from services.gemini import analyze_match
-from services.perplexity import query_perplexity_json
+from services.match_facts import fixtures_to_matches
 from services.scout_research import research_match
 
 logger = logging.getLogger(__name__)
 
-SCHEDULER_SYSTEM = (
-    "You are a precise data retrieval assistant. Return only a strict JSON "
-    "array of objects representing today's FIFA World Cup matches. Do not "
-    "include markdown formatting or conversational text."
-)
-
 
 def scheduler_node(state: GraphState) -> dict:
     current_date = state["date"]
-    user_prompt = (
-        f"Search the web for the official FIFA World Cup 2026 matches "
-        f"scheduled for {current_date}. Return the matchups as a JSON "
-        "array with 'team_a' and 'team_b' keys."
-    )
-    raw_matches = query_perplexity_json(SCHEDULER_SYSTEM, user_prompt)
-    matches = normalize_matches(raw_matches)
+    matches = fixtures_to_matches(current_date)
     logger.info("Scheduler found %d matches for %s", len(matches), current_date)
     return {"matches": matches}
 
 
-def _scout_match(match: Match, match_date: str) -> MatchReport:
+def _scout_match(match: Match, default_date: str) -> MatchReport:
+    match_date = match.report_date or default_date
     logger.info("Scouting %s vs %s", match.team_a, match.team_b)
-    raw_scout_data = research_match(match.team_a, match.team_b, match_date)
+    raw_scout_data, formation_data = research_match(match, match_date)
     return MatchReport(
         match=match,
         raw_scout_data=raw_scout_data,
         final_analysis="",
+        formation_data=formation_data,
     )
 
 
@@ -43,19 +33,22 @@ def scout_node(state: GraphState) -> dict:
     return {"reports": reports}
 
 
-def _analyze_report(item: MatchReport | dict, match_date: str) -> MatchReport:
+def _analyze_report(item: MatchReport | dict, default_date: str) -> MatchReport:
     report = coerce_report(item)
+    match_date = report.match.report_date or default_date
     logger.info("Analyzing %s vs %s", report.match.team_a, report.match.team_b)
     final_analysis = analyze_match(
         report.match.team_a,
         report.match.team_b,
         report.raw_scout_data,
         match_date,
+        formation_data=report.formation_data,
     )
     return MatchReport(
         match=report.match,
         raw_scout_data=report.raw_scout_data,
         final_analysis=final_analysis,
+        formation_data=report.formation_data,
     )
 
 

@@ -1,10 +1,10 @@
 SCOUT_SYSTEM = (
     "You are an elite football scout and tactical analyst preparing intelligence "
-    "for a World Cup betting desk. Search the web exhaustively. Be specific: "
-    "name players, cite dates, quote stats, and note sources. Today's date "
-    "is {match_date}. The tournament is FIFA World Cup 2026. For each national "
-    "team, always analyze the last 10 completed games across all competitions "
-    "(qualifiers, friendlies, Nations League, World Cup) — not just this tournament. "
+    "for a World Cup betting desk. Factual match data (fixtures, form, lineups, "
+    "H2H, injuries, odds) is provided from API-Football — treat it as ground truth. "
+    "Your job is qualitative interpretation: tactics, betting angles, and matchup "
+    "analysis. Be specific: name players, cite dates, quote stats. Today's date "
+    "is {match_date}. The tournament is FIFA World Cup 2026. "
     "If data is uncertain, say so — never invent facts."
 )
 
@@ -85,18 +85,20 @@ For EACH team, provide (grounded in the last 10 national-team games, any competi
 Be player-specific. No generic praise."""
 
 SCOUT_TACTICAL = """\
-Research tactical profiles for {team_a} vs {team_b} at World Cup 2026.
+Interpret tactical profiles for {team_a} vs {team_b} at World Cup 2026.
 
 Today's date: {match_date}.
 
-Cover for BOTH teams (ground patterns in the last 10 national-team games, any competition):
-1. Primary formation(s) and in-possession shape — note how often each was used in the last 10.
-2. Build-up patterns: how they progress from back to final third.
-3. Pressing system: PPDA, high/mid/low block, trigger points.
-4. Defensive vulnerabilities: spaces exploited, set-piece weakness, transition exposure.
-5. Set-piece threat (corners, free kicks): key takers and aerial targets.
-6. Transition game: counter-attack speed vs defensive rest defence.
-7. How their style likely clashes in this specific matchup."""
+Using ONLY the API-Football data provided below, analyze for BOTH teams:
+1. Primary formation(s) and in-possession shape from recent lineups and stats.
+2. Build-up patterns suggested by possession and passing trends in recent games.
+3. Pressing and defensive tendencies — ground in shots conceded, cards, and results.
+4. Defensive vulnerabilities visible in recent match events and statistics.
+5. Set-piece threat where evidence exists in recent games.
+6. Transition game and how their styles likely clash in this matchup.
+
+Do not invent metrics (PPDA, xG, etc.) unless they appear in the API data. \
+Flag gaps explicitly."""
 
 SCOUT_CONTEXT = """\
 Research match context for {team_a} vs {team_b} at World Cup 2026.
@@ -137,6 +139,11 @@ RESEARCH_SECTIONS: list[tuple[str, str]] = [
     ("Betting Markets", SCOUT_BETTING),
 ]
 
+# Perplexity-only — factual data and odds come from API-Football.
+PERPLEXITY_RESEARCH_SECTIONS: list[tuple[str, str]] = [
+    ("Tactical Analysis", SCOUT_TACTICAL),
+]
+
 ANALYST_SYSTEM = (
     "You are the lead match analyst for an elite football intelligence unit. "
     "You write the definitive pre-match scout report used by professional "
@@ -149,13 +156,15 @@ ANALYST_SYSTEM = (
     "(never # — the PDF cover already has the title); use - for bullets; use "
     "**bold** for emphasis; tables must use proper | column | syntax with a "
     "header separator row; leave a blank line before every header and table; "
-    "no bold or italic inside table cells; no HTML tags; no code fences around "
-    "the full report except the required ```dashboard and ```formation blocks. "
-    "In formation blocks, every slot must be a real player name from the research "
-    "(surname or full name) — NEVER position codes like LW, ST, CM, CB, or GK. "
+    "no bold or italic inside table cells; no HTML tags; no code fences. "
+    "API-Football sections are authoritative for fixtures, form, lineups, H2H, "
+    "injuries, player stats, predictions, and odds — do not contradict them. "
+    "Use the API-Football odds table for Betting Intelligence; do not invent lines. "
+    "If the research says odds are not available, write 'No odds available' in the "
+    "betting table and skip value angles — do not project fair lines. "
     "Name players and cite specific stats from the research. Do not invent "
     "data not present in the research. Where the research is thin, flag the gap "
-    "explicitly."
+    "explicitly. This is a morning pre-match report — lineups are predicted, not confirmed."
 )
 
 ANALYST_REPORT_TEMPLATE = """\
@@ -167,24 +176,6 @@ scout report for **{team_a} vs {team_b}** (World Cup 2026, report date: {match_d
 --- END RESEARCH ---
 
 Write the final report using EXACTLY this structure (start at ## — do NOT repeat the title):
-
-## Match Dashboard
-
-Output ONLY a ```dashboard JSON block in this section (no other text). Use real data from research.
-
-```dashboard
-{{
-  "kickoff": "Local kickoff time with timezone",
-  "venue": "Stadium, city",
-  "stage": "Group/knockout stage and what is at stake",
-  "predicted_score": "e.g. 2-1",
-  "confidence": "High, Medium, or Low",
-  "best_bet": "Single clearest betting position with line",
-  "tactical_story": "One sentence: the decisive tactical narrative",
-  "contrarian_angle": "One sentence: where consensus or the market may be wrong",
-  "decisive_window": "When the match is most likely to turn (e.g. minutes 55-70)"
-}}
-```
 
 ## Executive Summary
 3–4 sentences: stakes, likely narrative, and the single most important tactical story.
@@ -214,41 +205,10 @@ Summarize each team's last 10 national-team games (any competition — not just 
 
 ## Predicted Lineups
 
-Output a ```formation JSON block (and nothing else in this section except that block).
-
-Formation block rules:
-- lines run attack-to-goal (forwards first, goalkeeper last); each line is left-to-right on the pitch
-- every array entry must be a REAL player surname or full name from the research — never a position label
-- each team must have exactly 11 named players total across all lines
-- use the numbered predicted XIs and last-10 starting XI patterns from research as your source of truth
-- if a starter is doubtful, still name the most likely player and note doubt in unavailable
-
-```formation
-{{
-  "team_a": {{
-    "name": "{team_a}",
-    "formation": "4-3-3",
-    "lines": [
-      ["Gomez", "Alvarez", "Di Maria"],
-      ["Mac Allister", "Fernandez", "De Paul"],
-      ["Tagliafico", "Otamendi", "Romero", "Molina"],
-      ["Martinez"]
-    ]
-  }},
-  "team_b": {{
-    "name": "{team_b}",
-    "formation": "4-2-3-1",
-    "lines": [
-      ["Mbappe"],
-      ["Rabiot", "Griezmann", "Dembele"],
-      ["Camavinga", "Tchouameni"],
-      ["Hernandez", "Upamecano", "Saliba", "Kounde"],
-      ["Maignan"]
-    ]
-  }},
-  "unavailable": "List injuries, suspensions, and doubts for both teams"
-}}
-```
+Summarize the API-Football lineup data from research. These are morning predicted \
+lineups unless marked confirmed. Name both starting XIs and note injuries, \
+suspensions, or rotation risk. Do NOT output a formation code block — lineups are \
+injected separately from API data.
 
 ## Head-to-Head
 - Record and recent meetings with scores
@@ -286,13 +246,18 @@ Who wins dead balls, who is dangerous on the counter
 xG, chance quality, possession trends, defensive metrics — whatever the research supports
 
 ## Betting Intelligence
+
+Use the API-Football odds table from research. Copy real prices into the Line column. \
+If odds are not available, write "No odds available" for every row and omit value angles.
+
 | Market | Line | Implied read |
 |---|---|---|
 | 1X2 | ... | ... |
 | Asian Handicap | ... | ... |
 | Over/Under | ... | ... |
 
-**Value angles:** 2–3 reasoned betting positions with justification (not generic). Tag each with (High), (Medium), or (Low) confidence.
+**Value angles:** only if real odds exist — 2–3 reasoned positions grounded in the \
+API-Football prices. Tag each with (High), (Medium), or (Low) confidence.
 
 ## Verdict
 - **Predicted scoreline range** with confidence tier (High / Medium / Low)

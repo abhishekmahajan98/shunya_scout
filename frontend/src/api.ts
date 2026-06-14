@@ -14,6 +14,26 @@ export interface Match {
   team_b: string;
 }
 
+export interface FixtureOption {
+  fixture_id: number;
+  report_date: string;
+  team_a: string;
+  team_b: string;
+  kickoff: string | null;
+  venue: string;
+  city: string;
+  stage: string;
+  status: string;
+  has_report: boolean;
+  pdf_slug: string | null;
+  pdf_url: string | null;
+}
+
+export interface UpcomingFixtures {
+  dates: string[];
+  fixtures: FixtureOption[];
+}
+
 export interface DownloadEntry {
   match: Match;
   pdf_slug: string;
@@ -26,7 +46,11 @@ export interface DownloadIndex {
   downloads: DownloadEntry[];
 }
 
-export interface RunResult extends DownloadIndex {
+export interface RunResult {
+  date?: string | null;
+  dates?: string[];
+  downloads: DownloadEntry[];
+  generated_downloads?: DownloadEntry[];
   match_count: number;
   report_count: number;
   generated_count?: number;
@@ -88,7 +112,6 @@ async function request<T>(
 
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
 
-  // At most one token refresh + one retry — never loop on 401.
   if (res.status === 401 && authRetriesLeft > 0) {
     const refreshed = await tryRefreshSession();
     if (refreshed) return request<T>(path, init, authRetriesLeft - 1);
@@ -159,8 +182,14 @@ export function todayIso(): string {
   return new Date().toLocaleDateString("en-CA");
 }
 
-export function fetchTodayDownloads(): Promise<DownloadIndex> {
-  return request("/reports/today/latest");
+export function tomorrowIso(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toLocaleDateString("en-CA");
+}
+
+export function fetchUpcomingFixtures(): Promise<UpcomingFixtures> {
+  return request("/fixtures/upcoming");
 }
 
 export function fetchDownloads(date: string): Promise<DownloadIndex> {
@@ -171,11 +200,11 @@ export function fetchReportDates(): Promise<{ dates: string[] }> {
   return request("/reports");
 }
 
-export function runPipeline(date?: string): Promise<RunResult> {
+export function runPipeline(fixtureIds: number[]): Promise<RunResult> {
   return request("/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(date ? { date } : {}),
+    body: JSON.stringify({ fixture_ids: fixtureIds }),
   });
 }
 

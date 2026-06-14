@@ -114,6 +114,8 @@ def analyze_match(
     team_b: str,
     raw_scout_data: str,
     match_date: str,
+    *,
+    formation_data: dict | None = None,
 ) -> str:
     from graph.prompts import ANALYST_REPORT_TEMPLATE, ANALYST_SYSTEM
 
@@ -131,6 +133,10 @@ def analyze_match(
     with api_slot():
         response = gemini.generate_content(user_prompt)
     markdown = response.text or ""
+
+    if formation_data and not formation_issues(formation_data):
+        return replace_formation_block(markdown, formation_data)
+
     return ensure_valid_formation(
         markdown,
         team_a=team_a,
